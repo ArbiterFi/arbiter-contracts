@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
-import {FullMath} from "./FullMath.sol";
-import {FixedPoint128} from "./FixedPoint128.sol";
-import {LiquidityMath} from "./LiquidityMath.sol";
-import {CustomRevert} from "./CustomRevert.sol";
+import {FullMath} from "lib/v4-core/src/libraries//FullMath.sol";
+import {FixedPoint128} from "lib/v4-core/src/libraries/FixedPoint128.sol";
+import {LiquidityMath} from "lib/v4-core/src/libraries//LiquidityMath.sol";
+import {CustomRevert} from "lib/v4-core/src/libraries//CustomRevert.sol";
 
 /// @title Position
 /// @notice Positions represent an owner address' liquidity between a lower and upper tick boundary
