@@ -18,6 +18,10 @@ import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {IArbiterFeeProvider} from "./interfaces/IArbiterFeeProvider.sol";
 import {IUnlockCallback} from "lib/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 
+/// @notice ArbiterAmAmmSimpleHook implements am-AMM auction and hook functionalites.
+/// It allows anyone to bid for the right to collect and set trading fees for a pool after depositing the rent currency of the pool.
+/// @dev The winner address should implement IArbiterFeeProvider to set the trading fees.
+/// @dev The winner address should be able to manage ERC6909 claim tokens in the PoolManager.
 contract ArbiterAmAmmSimpleHook is BaseHook {
     using CurrencyLibrary for Currency;
     using LPFeeLibrary for uint24;
@@ -25,26 +29,23 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
     using SafeCast for int256;
     using SafeCast for uint256;
 
-    error NotEnoughCollateral();
-    error NotLiquidatable();
+    error ToSmallDeposit();
     error PoolMustBeDynamicFee();
-    error SenderIsAlreadyStrategist();
+    error AlreadyWinning();
     error RentTooLow();
-    error RentTooLowDuringCooldown();
-    error SenderMustBeStrategist();
 
     /// @notice State used within hooks.
     struct PoolHookState {
         address strategy;
-        uint40 lastPaidBlock;
-        bool rentInTokenZero;
+        uint88 rentPerBlock;
         bool changeStrategy;
+        bool rentInTokenZero;
     }
 
-    struct StrategistData {
-        uint120 deposit;
-        uint96 rentPerBlock;
-        uint40 rentEndBlock;
+    struct RentData {
+        uint128 remainingRent;
+        uint64 lastPaidBlock;
+        uint64 rentEndBlock;
     }
 
     /// @notice Data passed to `PoolManager.unlock` when distributing rent to LPs.
@@ -56,16 +57,16 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
     }
 
     mapping(PoolId => PoolHookState) public poolHookStates;
+    mapping(PoolId => RentData) public rentDatas;
     mapping(PoolId => address) public winners;
-    mapping(PoolId => address) public backers;
-    mapping(PoolId => mapping(address => StrategistData)) public strategistDatas;
+    mapping(address => mapping(Currency => uint256)) public deposits;
 
     uint24 DEFAULT_SWAP_FEE = 300; // 0.03%
-    uint24 MAX_FEE = 3000; // 0.3% 
+    uint24 MAX_FEE = 3000; // 0.3%
 
     uint256 RENT_FACTOR = 1.05e6; // Rent needs to be 5% higher to overvid current winner
-    uint256 minimumRentTimeInBlocks = 300; // Minimum number of block for rent to be bided
-
+    uint64 minimumRentTimeInBlocks = 300; // Minimum number of block for rent to be bided
+    uint64 transitionBlocks = 3; // In the last 3 blocks of rent one can be overbided by any amount
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
@@ -93,7 +94,7 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
         });
     }
 
-    /// @notice Reverts if dynamic fee flag is not set.
+    /// @dev Reverts if dynamic fee flag is not set or if the pool is not intialized with dynamic fees.
     function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata)
         external
         view
@@ -119,33 +120,31 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
         return this.beforeAddLiquidity.selector;
     }
 
-    /// @notice Calculate swap fees from attached strategy and redirect the fees to the strategist.
-    function beforeSwap(
-        address sender,
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata params,
-        bytes calldata
-    ) external override onlyPoolManager returns (bytes4, BeforeSwapDelta, uint24) {
-        _payRent(key);
+    /// @notice Distributes rent to LPs before each swap.
+    /// @notice Returns fee what will be paid to the hook and pays the fee to the strategist.
+    function beforeSwap(address sender, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata)
+        external
+        override
+        onlyPoolManager
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
+        address strategy = _payRent(key);
 
         // If no strategy is set, the swap fee is just set to the default fee like in a hookless Uniswap pool
-        PoolHookState storage hookState = poolHookStates[key.toId()];
-        if (hookState.strategy == address(0) || hookState.strategy == address(1)) {
+        if (strategy == address(0)) {
             return
                 (this.beforeSwap.selector, toBeforeSwapDelta(0, 0), DEFAULT_SWAP_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG);
         }
 
         // Call strategy contract to get swap fee.
         uint256 fee = DEFAULT_SWAP_FEE;
-        try IArbiterFeeProvider(hookState.strategy).getFee(sender, key, params) returns (uint24 _fee) {
+        try IArbiterFeeProvider(strategy).getFee(sender, key, params) returns (uint24 _fee) {
             if (_fee > MAX_FEE) {
-                fee= MAX_FEE;
+                fee = MAX_FEE;
             } else {
-            fee =  _fee;
+                fee = _fee;
             }
-        } catch { }
-
-
+        } catch {}
 
         int256 fees = params.amountSpecified * int256(fee) / 1e6 - params.amountSpecified;
         uint256 absFees = fees < 0 ? uint256(-fees) : uint256(fees);
@@ -156,121 +155,89 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
         Currency feeCurrency = exactOut != params.zeroForOne ? key.currency0 : key.currency1;
 
         // // Send fees to `feeRecipient`
-        poolManager.mint(hookState.strategy, feeCurrency.toId(), absFees);
+        poolManager.mint(strategy, feeCurrency.toId(), absFees);
 
         // Override LP fee to zero
         return (this.beforeSwap.selector, toBeforeSwapDelta(int128(fees), 0), LPFeeLibrary.OVERRIDE_FEE_FLAG);
     }
-
 
     ///////////////////////////////////////////////////////////////////////////////////
     ////////////////////////////////////// AmAMM //////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////
 
     /// @notice Deposit tokens into this contract. Deposits are used to cover rent payments as the manager.
-    function deposit(PoolKey calldata key, uint120 amount) external {
+    function makeDeposit(PoolKey calldata key, uint256 amount) external {
+        require( rentDatas[key.toId()].lastPaidBlock != 0, "Pool not initialized");  
         // Deposit 6909 claim tokens to Uniswap V4 PoolManager. The claim tokens are owned by this contract.
         poolManager.unlock(abi.encode(CallbackData(key, msg.sender, amount, 0)));
-        StrategistData storage strategistData = strategistDatas[key.toId()][msg.sender];
-        strategistData.deposit += amount;
+        deposits[msg.sender][_getPoolRentCurrency(key)] += amount;
     }
 
-     /// @notice Modify bid for a pool
-    function bid(PoolKey calldata key, uint256 rent, uint40 rentEndBlock) external {
+    /// @notice Place a winning bid - once won the sender address will receive all swap fees and will be called to provide fee.
+    /// @dev The rent must be higher than the current rent by RENT_FACTOR unless the current rent is in the last transitionBlocks blocks
+    /// @dev The rentEndBlock must be at least minimumRentTimeInBlocks in the future
+    /// @dev The sender must have enough deposit to cover the rent
+    function bid(PoolKey calldata key, uint88 rent, uint64 rentEndBlock) external {
         require(rentEndBlock >= block.number + minimumRentTimeInBlocks, "Rent too short");
-        _payRent(key);        
-        address winner = winners[key.toId()];
-        address backer = backers[key.toId()];
 
-        StrategistData memory biderData = strategistDatas[key.toId()][winner];
-        // for winner or backer rent must be higher unless current rent hes expired
-        if (msg.sender == winner || msg.sender == backer) {
-            require(rent > biderData.rentPerBlock * RENT_FACTOR/ 1e6 || biderData.rentEndBlock < block.number, "Error");   
+        RentData memory rentData = rentDatas[key.toId()];
+        PoolHookState memory hookState = poolHookStates[key.toId()];
+        if (block.number < rentData.rentEndBlock - transitionBlocks) {
+            require(rent > hookState.rentPerBlock * RENT_FACTOR / 1e6, "Rent too low");
         }
 
-        // Revert if sender has to small deposit
-        if (biderData.deposit < rent * (rentEndBlock - block.number)) {
-            revert NotEnoughCollateral();
-        }
+        _payRent(key);
 
-        StrategistData storage strategistData = strategistDatas[key.toId()][msg.sender];
-        strategistData.rentEndBlock = rentEndBlock;
-        strategistData.rentPerBlock = uint96(rent);
+        Currency currency = _getPoolRentCurrency(key);
+
+        // refund the remaining rent to the previous winner
+        deposits[winners[key.toId()]][currency] += rentData.remainingRent;
+
+        // charge the new winner
+        uint128 requiredDeposit = rent * (rentEndBlock - uint64(block.number));
+        require(deposits[msg.sender][currency] >= requiredDeposit, "Deposit too low");
+        deposits[msg.sender][currency] -= requiredDeposit;
+
+        // set up new rent
+        rentData.remainingRent = requiredDeposit;
+        rentData.rentEndBlock = rentEndBlock;
+        hookState.rentPerBlock = rent;
+        hookState.changeStrategy = true;
+
+        rentDatas[key.toId()] = rentData;
+        poolHookStates[key.toId()] = hookState;
+        winners[key.toId()] = msg.sender;
     }
 
-     /// @notice Withdraw tokens from this contract that were previously deposited with `depositCollateral`.
-    function withdraw(PoolKey calldata key, uint120 amount) external {
-        StrategistData memory senderData = strategistDatas[key.toId()][msg.sender];
-        address winner = winners[key.toId()];
-        address backer = backers[key.toId()];
-        uint120 minDeposit = 0;
-        PoolHookState memory poolHookState = poolHookStates[key.toId()];
-
-        if ((msg.sender == winner || msg.sender == backer) && senderData.rentEndBlock > poolHookState.lastPaidBlock) {
-            minDeposit = senderData.rentPerBlock * (senderData.rentEndBlock - poolHookState.lastPaidBlock);
+    /// @notice Withdraw tokens from this contract that were previously deposited with `depositCollateral`.
+    function withdraw(PoolKey calldata key, uint128 amount) external {
+        Currency currency = _getPoolRentCurrency(key);
+        uint256 deposit = deposits[msg.sender][currency];
+        unchecked {
+            require(deposit >= amount, "Deposit too low");
+            deposits[msg.sender][currency] = deposit - amount;
         }
-
-        require (senderData.deposit >= amount + minDeposit, "Deposit too low");
-
-        senderData.deposit -= amount;
-
         // Withdraw 6909 claim tokens from Uniswap V4 PoolManager
         poolManager.unlock(abi.encode(CallbackData(key, msg.sender, 0, amount)));
     }
 
-    function setWinner(PoolKey calldata key, address newWinner) external {
-        address winner = winners[key.toId()];
-
-        require (newWinner != winner, "Already winning");            
-
-        StrategistData memory winnerData = strategistDatas[key.toId()][winner];
-        StrategistData memory newWinnerData = strategistDatas[key.toId()][newWinner];
-
-        require(newWinnerData.rentEndBlock > block.number && newWinnerData.rentPerBlock > winnerData.rentPerBlock * RENT_FACTOR / 1e6, "Error");
-
-        backers[key.toId()] = winner;
-        winners[key.toId()] = newWinner;
-
-        poolHookStates[key.toId()].changeStrategy = true;
-    }
-
-    function setBacker(PoolKey calldata key, address newBacker) external {
-        address backer = backers[key.toId()];
-        require (newBacker != backer, "Already backing");     
-
-        address winner = winners[key.toId()];       
-        require(newBacker != winner, "Already winning");
-
-        StrategistData memory backerData = strategistDatas[key.toId()][backer];
-        StrategistData memory newBackerData = strategistDatas[key.toId()][newBacker];
-        StrategistData memory winnerData = strategistDatas[key.toId()][winner];
-
-        uint40 minimumBlock = uint40(block.number) > winnerData.rentEndBlock ? uint40(block.number) : winnerData.rentEndBlock;
-
-        require(newBackerData.rentEndBlock > minimumBlock && newBackerData.rentPerBlock > backerData.rentPerBlock * RENT_FACTOR / 1e6, "Error");
-
-        backers[key.toId()] = newBacker;    
-    } 
-
     ///////////////////////////////////////////////////////////////////////////////////
     ///////////////////////////////////// Callback ////////////////////////////////////
-    ///////////////////////////////////////////////////////////////////////////////////   
+    ///////////////////////////////////////////////////////////////////////////////////
 
     /// @notice Deposit or withdraw 6909 claim tokens and distribute rent to LPs.
     function _unlockCallback(bytes calldata rawData) internal override returns (bytes memory) {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         _payRent(data.key);
         if (data.depositAmount > 0) {
-            PoolHookState storage poolHookState = poolHookStates[data.key.toId()];
-            Currency currency = poolHookState.rentInTokenZero ? data.key.currency0 : data.key.currency1;
-            poolManager.burn(data.sender, currency.toId(), data.depositAmount); 
-            poolManager.mint(address(this),currency.toId(), data.depositAmount); 
+            Currency currency = _getPoolRentCurrency(data.key);
+            poolManager.burn(data.sender, currency.toId(), data.depositAmount);
+            poolManager.mint(address(this), currency.toId(), data.depositAmount);
         }
         if (data.withdrawAmount > 0) {
-            PoolHookState storage poolHookState = poolHookStates[data.key.toId()];
-            Currency currency = poolHookState.rentInTokenZero ? data.key.currency0 : data.key.currency1;
-           poolManager.burn(address(this), currency.toId(), data.withdrawAmount); 
-            poolManager.mint(data.sender,currency.toId(), data.withdrawAmount); 
+            Currency currency = _getPoolRentCurrency(data.key);
+            poolManager.burn(address(this), currency.toId(), data.withdrawAmount);
+            poolManager.mint(data.sender, currency.toId(), data.withdrawAmount);
         }
         return "";
     }
@@ -279,48 +246,60 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
     ///////////////////////////////////// Internal ////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////
 
-
     /// @dev Must be called while lock is acquired.
     function _payRent(PoolKey memory key) internal returns (address) {
+        RentData memory rentData = rentDatas[key.toId()];
         PoolHookState memory hookState = poolHookStates[key.toId()];
 
-        if (hookState.lastPaidBlock == block.number) {
+        if (rentData.lastPaidBlock == block.number) {
             return hookState.strategy;
         }
 
+
         // check if we need to change strategy
-        if (hookState.changeStrategy && hookState.lastPaidBlock != block.number) {
+        if (hookState.changeStrategy && rentData.lastPaidBlock != block.number) {
             hookState.strategy = winners[key.toId()];
             hookState.changeStrategy = false;
         }
 
-        StrategistData memory strategistData = strategistDatas[key.toId()][hookState.strategy];
+        uint64 blocksElapsed;
+        if (rentData.rentEndBlock <= uint64(block.number)) {
+            blocksElapsed = rentData.rentEndBlock - rentData.lastPaidBlock;
+            winners[key.toId()] = address(0);
+            hookState.changeStrategy = true;
+            hookState.rentPerBlock = 0;
+            poolHookStates[key.toId()] = hookState;
+        } else {
+            blocksElapsed = uint64(block.number) - rentData.lastPaidBlock;
+        }
 
-        uint40 blocksElapsed = strategistData.rentEndBlock > uint40(block.number)
-            ? uint40(block.number) - hookState.lastPaidBlock
-            : strategistData.rentEndBlock - hookState.lastPaidBlock;
+        rentData.lastPaidBlock = uint64(block.number);
 
-        hookState.lastPaidBlock = uint40(block.number);
+        uint128 rentAmount = hookState.rentPerBlock * blocksElapsed;
 
-        if (blocksElapsed == 0) return hookState.strategy;
+        rentData.remainingRent -= rentAmount;
+        rentDatas[key.toId()] = rentData;
 
-        uint120 rentAmount = strategistData.rentPerBlock * blocksElapsed;
+        if (rentAmount == 0) {
+            return hookState.strategy;
+        }
 
-        strategistData.deposit -= rentAmount;
-        strategistDatas[key.toId()][hookState.strategy] = strategistData;
-        poolHookStates[key.toId()] = hookState;
-
-
-        if( hookState.rentInTokenZero){
-            Currency currency =  key.currency0;
-            poolManager.burn(address(this),currency.toId(), rentAmount); 
+        // pay the rent
+        if (hookState.rentInTokenZero) {
+            Currency currency = key.currency0;
+            poolManager.burn(address(this), currency.toId(), rentAmount);
             poolManager.donate(key, rentAmount, 0, "");
         } else {
-            Currency currency =  key.currency1;
-            poolManager.burn(address(this),currency.toId(),  rentAmount); 
+            Currency currency = key.currency1;
+            poolManager.burn(address(this), currency.toId(), rentAmount);
             poolManager.donate(key, 0, rentAmount, "");
         }
 
         return hookState.strategy;
     }
+
+    function _getPoolRentCurrency(PoolKey memory key) internal view returns (Currency) {
+        return poolHookStates[key.toId()].rentInTokenZero ? key.currency0 : key.currency1;
+    }
+        
 }
