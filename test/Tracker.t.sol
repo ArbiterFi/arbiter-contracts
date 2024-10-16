@@ -11,21 +11,25 @@
 // import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
 // import {CurrencyLibrary, Currency} from "lib/v4-core/src/types/Currency.sol";
 // import {PoolSwapTest} from "lib/v4-core/src/test/PoolSwapTest.sol";
-// import {Counter} from "../src/Counter.sol";
 // import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
+// import {Slot0Library, Slot0} from "lib/v4-core/src/types/Slot0.sol";
 
 // import {LiquidityAmounts} from "lib/v4-core/test/utils/LiquidityAmounts.sol";
 // import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 // import {EasyPosm} from "./utils/EasyPosm.sol";
 // import {Fixtures} from "./utils/Fixtures.sol";
 
-// contract CounterTest is Test, Fixtures {
+// import {Tracker} from "../src/Tracker.sol";
+// import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+
+// contract DepositedLiquidityTrackerTest is Test, Fixtures {
 //     using EasyPosm for IPositionManager;
 //     using PoolIdLibrary for PoolKey;
+//     using Slot0Library for Slot0;
 //     using CurrencyLibrary for Currency;
 //     using StateLibrary for IPoolManager;
 
-//     Counter hook;
+//     Tracker hook;
 //     PoolId poolId;
 
 //     uint256 tokenId;
@@ -42,13 +46,12 @@
 //         // Deploy the hook to an address with the correct flags
 //         address flags = address(
 //             uint160(
-//                 Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
-//                     | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+//                 Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG
 //             ) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
 //         );
-//         bytes memory constructorArgs = abi.encode(manager); //Add all the necessary constructor arguments from the hook
-//         deployCodeTo("Counter.sol:Counter", constructorArgs, flags);
-//         hook = Counter(flags);
+//         bytes memory constructorArgs = abi.encode(manager, posm); //Add all the necessary constructor arguments from the hook
+//         deployCodeTo("Tracker.sol:Tracker", constructorArgs, flags);
+//         hook = Tracker(flags);
 
 //         // Create the pool
 //         key = PoolKey(currency0, currency1, 3000, 60, IHooks(hook));
@@ -81,44 +84,27 @@
 //         );
 //     }
 
-//     function testCounterHooks() public {
+//     function testInitialization() public view {
 //         // positions were created in setup()
-//         assertEq(hook.beforeAddLiquidityCount(poolId), 1);
-//         assertEq(hook.beforeRemoveLiquidityCount(poolId), 0);
-
-//         assertEq(hook.beforeSwapCount(poolId), 0);
-//         assertEq(hook.afterSwapCount(poolId), 0);
-
-//         // Perform a test swap //
-//         bool zeroForOne = true;
-//         int256 amountSpecified = -1e18; // negative number indicates exact input swap!
-//         BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
-//         // ------------------- //
-
-//         assertEq(int256(swapDelta.amount0()), amountSpecified);
-
-//         assertEq(hook.beforeSwapCount(poolId), 1);
-//         assertEq(hook.afterSwapCount(poolId), 1);
+//         (,int24 tick,,) = manager.getSlot0(poolId);
+//         assertEq(hook.activeTick(poolId),tick);
 //     }
 
-//     function testLiquidityHooks() public {
-//         // positions were created in setup()
-//         assertEq(hook.beforeAddLiquidityCount(poolId), 1);
-//         assertEq(hook.beforeRemoveLiquidityCount(poolId), 0);
-
-//         // remove liquidity
-//         uint256 liquidityToRemove = 1e18;
-//         posm.decreaseLiquidity(
-//             tokenId,
-//             liquidityToRemove,
-//             MAX_SLIPPAGE_REMOVE_LIQUIDITY,
-//             MAX_SLIPPAGE_REMOVE_LIQUIDITY,
-//             address(this),
-//             block.timestamp,
-//             ZERO_BYTES
-//         );
-
-//         assertEq(hook.beforeAddLiquidityCount(poolId), 1);
-//         assertEq(hook.beforeRemoveLiquidityCount(poolId), 1);
+//     function testSafeTransferOwner() public {
+//         IERC721 posm = IERC721(address(posm));
+//         posm.safeTransferFrom(address(this), address(hook), 1);
+//         assertEq(posm.ownerOf(1), address(hook));
+//         assertEq(hook.deposits(1), address(this));
 //     }
+
+//     function testIncreaseLiquidityOnSafeTransfer() public {
+//         IERC721 posm = IERC721(address(posm));
+//         posm.safeTransferFrom(address(this), address(hook), 1);
+//         assertEq(hook.activeLiquidty(poolId), 100e18);
+//     }
+
+//     // function testSafeTransferLiquidity() public {
+//     //     posm.safeTransferFrom(address(this), address(hook), tokenId);
+//     //     assertEq(hook.activeLiquidity(poolId), 100e18);
+//     // }
 // }

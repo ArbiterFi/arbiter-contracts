@@ -76,32 +76,32 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
 
     /// @notice Specify hook permissions. `beforeSwapReturnDelta` is also set to charge custom swap fees that go to the strategist instead of LPs.
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
-        return Hooks.Permissions({
-            beforeInitialize: true,
-            afterInitialize: false,
-            beforeAddLiquidity: true,
-            beforeRemoveLiquidity: false,
-            afterAddLiquidity: false,
-            afterRemoveLiquidity: false,
-            beforeSwap: true,
-            afterSwap: false,
-            beforeDonate: false,
-            afterDonate: false,
-            beforeSwapReturnDelta: true,
-            afterSwapReturnDelta: true,
-            afterAddLiquidityReturnDelta: false,
-            afterRemoveLiquidityReturnDelta: false
-        });
+        return
+            Hooks.Permissions({
+                beforeInitialize: true,
+                afterInitialize: false,
+                beforeAddLiquidity: true,
+                beforeRemoveLiquidity: false,
+                afterAddLiquidity: false,
+                afterRemoveLiquidity: false,
+                beforeSwap: true,
+                afterSwap: false,
+                beforeDonate: false,
+                afterDonate: false,
+                beforeSwapReturnDelta: true,
+                afterSwapReturnDelta: true,
+                afterAddLiquidityReturnDelta: false,
+                afterRemoveLiquidityReturnDelta: false
+            });
     }
 
     /// @dev Reverts if dynamic fee flag is not set or if the pool is not intialized with dynamic fees.
-    function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata)
-        external
-        view
-        override
-        onlyPoolManager
-        returns (bytes4)
-    {
+    function beforeInitialize(
+        address,
+        PoolKey calldata key,
+        uint160,
+        bytes calldata
+    ) external view override onlyPoolManager returns (bytes4) {
         // Pool must have dynamic fee flag set. This is so we can override the LP fee in `beforeSwap`.
         if (!key.fee.isDynamicFee()) revert PoolMustBeDynamicFee();
         return this.beforeInitialize.selector;
@@ -122,18 +122,21 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
 
     /// @notice Distributes rent to LPs before each swap.
     /// @notice Returns fee what will be paid to the hook and pays the fee to the strategist.
-    function beforeSwap(address sender, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata)
-        external
-        override
-        onlyPoolManager
-        returns (bytes4, BeforeSwapDelta, uint24)
-    {
+    function beforeSwap(
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.SwapParams calldata params,
+        bytes calldata
+    ) external override onlyPoolManager returns (bytes4, BeforeSwapDelta, uint24) {
         address strategy = _payRent(key);
 
         // If no strategy is set, the swap fee is just set to the default fee like in a hookless Uniswap pool
         if (strategy == address(0)) {
-            return
-                (this.beforeSwap.selector, toBeforeSwapDelta(0, 0), DEFAULT_SWAP_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG);
+            return (
+                this.beforeSwap.selector,
+                toBeforeSwapDelta(0, 0),
+                DEFAULT_SWAP_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG
+            );
         }
 
         // Call strategy contract to get swap fee.
@@ -146,7 +149,7 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
             }
         } catch {}
 
-        int256 fees = params.amountSpecified * int256(fee) / 1e6 - params.amountSpecified;
+        int256 fees = (params.amountSpecified * int256(fee)) / 1e6 - params.amountSpecified;
         uint256 absFees = fees < 0 ? uint256(-fees) : uint256(fees);
         // Determine the specified currency. If amountSpecified < 0, the swap is exact-in so the feeCurrency should be the token the swapper is selling.
         // If amountSpecified > 0, the swap is exact-out and it's the bought token.
@@ -167,7 +170,7 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
 
     /// @notice Deposit tokens into this contract. Deposits are used to cover rent payments as the manager.
     function makeDeposit(PoolKey calldata key, uint256 amount) external {
-        require( rentDatas[key.toId()].lastPaidBlock != 0, "Pool not initialized");  
+        require(rentDatas[key.toId()].lastPaidBlock != 0, "Pool not initialized");
         // Deposit 6909 claim tokens to Uniswap V4 PoolManager. The claim tokens are owned by this contract.
         poolManager.unlock(abi.encode(CallbackData(key, msg.sender, amount, 0)));
         deposits[msg.sender][_getPoolRentCurrency(key)] += amount;
@@ -183,7 +186,7 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
         RentData memory rentData = rentDatas[key.toId()];
         PoolHookState memory hookState = poolHookStates[key.toId()];
         if (block.number < rentData.rentEndBlock - transitionBlocks) {
-            require(rent > hookState.rentPerBlock * RENT_FACTOR / 1e6, "Rent too low");
+            require(rent > (hookState.rentPerBlock * RENT_FACTOR) / 1e6, "Rent too low");
         }
 
         _payRent(key);
@@ -255,7 +258,6 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
             return hookState.strategy;
         }
 
-
         // check if we need to change strategy
         if (hookState.changeStrategy && rentData.lastPaidBlock != block.number) {
             hookState.strategy = winners[key.toId()];
@@ -301,5 +303,4 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
     function _getPoolRentCurrency(PoolKey memory key) internal view returns (Currency) {
         return poolHookStates[key.toId()].rentInTokenZero ? key.currency0 : key.currency1;
     }
-        
 }

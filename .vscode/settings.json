@@ -1,4 +1,3 @@
 {
-  "solidity.formatter": "forge",
-  "solidity.packageDefaultDependenciesDirectory": "lib",
+  "solidity.packageDefaultDependenciesDirectory": "lib"
 }
