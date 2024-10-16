@@ -36,17 +36,38 @@ library PoolExtension {
         int128 liquidityNet;
         // the seconds per unit of liquidity on the _other_ side of this tick (relative to the current tick)
         // only has relative meaning, not absolute — the value depends on when the tick is initialized
-        uint160 secondsPerLiquidityOutsideX128;
+        uint256 secondsPerLiquidityOutsideX128;
     }
 
     /// @dev The state of a pool extension
     struct State {
         int24 tick;
-        uint160 secondsPerLiquidityCumulativeX128;
+        uint256 secondsPerLiquidityCumulativeX128;
         uint128 liquidity;
         mapping(int24 tick => TickInfo) ticks;
         mapping(int16 wordPos => uint256) tickBitmap;
         mapping(bytes32 positionKey => Position.State) positions;
+    }
+
+    function _secondsPerLiquidityInsideX128(
+        State storage self,
+        int24 tickLower,
+        int24 tickUpper
+    ) internal view returns (uint256) {
+        unchecked {
+            if (tickLower >= tickUpper) return 0;
+
+            if (self.tick < tickLower) {
+                return self.ticks[tickLower].secondsPerLiquidityOutsideX128 - self.secondsPerLiquidityCumulativeX128;
+            }
+            if (self.tick >= tickUpper) {
+                return self.secondsPerLiquidityCumulativeX128 - self.ticks[tickUpper].secondsPerLiquidityOutsideX128;
+            }
+            return
+                self.secondsPerLiquidityCumulativeX128 -
+                self.ticks[tickUpper].secondsPerLiquidityOutsideX128 -
+                self.ticks[tickLower].secondsPerLiquidityOutsideX128;
+        }
     }
 
     function initialize(State storage self, int24 tick) internal {
@@ -73,45 +94,45 @@ library PoolExtension {
     /// @notice Effect changes to a position in a pool
     /// @dev PoolManager checks that the pool is initialized before calling
     /// @param params the position details and the change to the position's liquidity to effect
-
     function modifyLiquidity(State storage self, ModifyLiquidityParams memory params) internal {
         int128 liquidityDelta = params.liquidityDelta;
         int24 tickLower = params.tickLower;
         int24 tickUpper = params.tickUpper;
-        {
-            ModifyLiquidityState memory state;
 
-            // if we need to update the ticks, do it
-            if (liquidityDelta != 0) {
-                (state.flippedLower, state.liquidityGrossAfterLower) =
-                    updateTick(self, tickLower, liquidityDelta, false);
-                (state.flippedUpper, state.liquidityGrossAfterUpper) = updateTick(self, tickUpper, liquidityDelta, true);
+        ModifyLiquidityState memory state;
 
-                if (state.flippedLower) {
-                    self.tickBitmap.flipTick(tickLower, params.tickSpacing);
-                }
-                if (state.flippedUpper) {
-                    self.tickBitmap.flipTick(tickUpper, params.tickSpacing);
-                }
+        // if we need to update the ticks, do it
+        if (liquidityDelta != 0) {
+            (state.flippedLower, state.liquidityGrossAfterLower) = updateTick(self, tickLower, liquidityDelta, false);
+            (state.flippedUpper, state.liquidityGrossAfterUpper) = updateTick(self, tickUpper, liquidityDelta, true);
+
+            if (state.flippedLower) {
+                self.tickBitmap.flipTick(tickLower, params.tickSpacing);
             }
-
-            // clear any tick data that is no longer needed
-            if (liquidityDelta < 0) {
-                if (state.flippedLower) {
-                    clearTick(self, tickLower);
-                }
-                if (state.flippedUpper) {
-                    clearTick(self, tickUpper);
-                }
+            if (state.flippedUpper) {
+                self.tickBitmap.flipTick(tickUpper, params.tickSpacing);
             }
+        }
+
+        // clear any tick data that is no longer needed
+        if (liquidityDelta < 0) {
+            if (state.flippedLower) {
+                clearTick(self, tickLower);
+            }
+            if (state.flippedUpper) {
+                clearTick(self, tickUpper);
+            }
+        }
+
+        // update the active liquidity
+        if (params.tickLower < self.tick && self.tick < params.tickUpper) {
+            self.liquidity += liquidityDelta;
         }
     }
 
     /// @notice Executes a swap against the state, and returns the amount deltas of the pool
     /// @dev PoolManager checks that the pool is initialized before calling
-    function crossToActiveTick(State storage self, int24 tickSpacing, int24 activeTick)
-        internal
-    {
+    function crossToActiveTick(State storage self, int24 tickSpacing, int24 activeTick) internal {
         // initialize to the current tick
         int24 currentTick = self.tick;
         // initialize to the current liquidity
@@ -121,8 +142,11 @@ library PoolExtension {
 
         while ((activeTick < currentTick) == goingLeft) {
             bool initialized;
-            (currentTick, initialized) =
-                self.tickBitmap.nextInitializedTickWithinOneWord(currentTick, tickSpacing, goingLeft);
+            (currentTick, initialized) = self.tickBitmap.nextInitializedTickWithinOneWord(
+                currentTick,
+                tickSpacing,
+                goingLeft
+            );
 
             int128 liquidityNet = PoolExtension.crossTick(self, currentTick, self.secondsPerLiquidityCumulativeX128);
 
@@ -138,7 +162,6 @@ library PoolExtension {
         self.liquidity = LiquidityMath.addDelta(self.liquidity, liquidityChange);
     }
 
-
     /// @notice Updates a tick and returns true if the tick was flipped from initialized to uninitialized, or vice versa
     /// @param self The mapping containing all tick information for initialized ticks
     /// @param tick The tick that will be updated
@@ -146,10 +169,12 @@ library PoolExtension {
     /// @param upper true for updating a position's upper tick, or false for updating a position's lower tick
     /// @return flipped Whether the tick was flipped from initialized to uninitialized, or vice versa
     /// @return liquidityGrossAfter The total amount of liquidity for all positions that references the tick after the update
-    function updateTick(State storage self, int24 tick, int128 liquidityDelta, bool upper)
-        internal
-        returns (bool flipped, uint128 liquidityGrossAfter)
-    {
+    function updateTick(
+        State storage self,
+        int24 tick,
+        int128 liquidityDelta,
+        bool upper
+    ) internal returns (bool flipped, uint128 liquidityGrossAfter) {
         TickInfo storage info = self.ticks[tick];
 
         uint128 liquidityGrossBefore = info.liquidityGross;
@@ -196,14 +221,16 @@ library PoolExtension {
     /// @param tick The destination tick of the transition
     /// @param secondsPerLiquidityCumulativeX128 The seconds per active liquidity in total for the pool
     /// @return liquidityNet The amount of liquidity added (subtracted) when tick is crossed from left to right (right to left)
-    function crossTick(State storage self, int24 tick, uint160 secondsPerLiquidityCumulativeX128)
-        internal
-        returns (int128 liquidityNet)
-    {
+    function crossTick(
+        State storage self,
+        int24 tick,
+        uint160 secondsPerLiquidityCumulativeX128
+    ) internal returns (int128 liquidityNet) {
         unchecked {
             TickInfo storage info = self.ticks[tick];
             info.secondsPerLiquidityOutsideX128 =
-                secondsPerLiquidityCumulativeX128 - info.secondsPerLiquidityOutsideX128;
+                secondsPerLiquidityCumulativeX128 -
+                info.secondsPerLiquidityOutsideX128;
             liquidityNet = info.liquidityNet;
         }
     }
