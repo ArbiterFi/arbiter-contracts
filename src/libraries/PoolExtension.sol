@@ -126,7 +126,7 @@ library PoolExtension {
 
         // update the active liquidity
         if (params.tickLower < self.tick && self.tick < params.tickUpper) {
-            self.liquidity += liquidityDelta;
+            self.liquidity = LiquidityMath.addDelta(self.liquidity, liquidityDelta);
         }
     }
 
@@ -224,7 +224,7 @@ library PoolExtension {
     function crossTick(
         State storage self,
         int24 tick,
-        uint160 secondsPerLiquidityCumulativeX128
+        uint256 secondsPerLiquidityCumulativeX128
     ) internal returns (int128 liquidityNet) {
         unchecked {
             TickInfo storage info = self.ticks[tick];

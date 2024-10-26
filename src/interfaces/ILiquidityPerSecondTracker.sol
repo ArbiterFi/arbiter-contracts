@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
+import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {ISubscriber} from "lib/v4-periphery/src/interfaces/ISubscriber.sol";
+
+/// @title Liquidity Per Second TrackerHook
+/// @notice This hook is used to track the liquidity per second of subscribed liquidity within pools like in V3.
+interface ILiquididityPerSecondTrackerHook is ISubscriber, IHooks {
+    /// @return The seconds per **subscribed** liquidity cumulative for the pool
+    /// @param key The key of the pool to check
+    function getSecondsPerLiquidityCumulativeX128(PoolKey calldata key) external view returns (uint256);
+
+    /// @return The seconds per **subscribed** liquidity inside the tick range
+    /// @param key The key of the pool to check
+    /// @param tickLower The lower tick of the range
+    function getSecondsPerLiquidityInsideX128(
+        PoolKey calldata key,
+        int24 tickLower,
+        int24 tickUpper
+    ) external view returns (uint256);
+}

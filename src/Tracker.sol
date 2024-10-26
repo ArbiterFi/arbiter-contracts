@@ -17,7 +17,7 @@ import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 import {ISubscriber} from "lib/v4-periphery/src/interfaces/ISubscriber.sol";
 
 import {PoolExtension} from "./libraries/PoolExtension.sol";
-import {PositionExtension} from "./libraries/PositionExtension.sol";
+// import {PositionExtension} from "./libraries/PositionExtension.sol";
 
 contract Tracker is BaseHook, ISubscriber {
     using StateLibrary for IPoolManager;
@@ -26,7 +26,7 @@ contract Tracker is BaseHook, ISubscriber {
     using PositionInfoLibrary for PositionInfo;
 
     mapping(PoolId => PoolExtension.State) public pools;
-    mapping(uint256 => PositionExtension.State) public positions;
+    // mapping(uint256 => PositionExtension.State) public positions;
 
     IPositionManager public immutable positionManager;
 
@@ -89,7 +89,7 @@ contract Tracker is BaseHook, ISubscriber {
         BalanceDelta,
         bytes calldata
     ) external override returns (bytes4, int128) {
-        _afterSwapTracker(key, tick);
+        _afterSwapTracker(key);
         return (BaseHook.afterSwap.selector, 0);
     }
 
@@ -97,7 +97,7 @@ contract Tracker is BaseHook, ISubscriber {
         pools[key.toId()].tick = tick;
     }
 
-    function _afterSwapTracker(PoolKey calldata key, int24 tick) internal {
+    function _afterSwapTracker(PoolKey calldata key) internal {
         (, int24 tick, , ) = poolManager.getSlot0(key.toId());
         pools[key.toId()].crossToActiveTick(key.tickSpacing, tick);
     }
@@ -121,7 +121,7 @@ contract Tracker is BaseHook, ISubscriber {
     }
 
     /// @inheritdoc ISubscriber
-    function notifySubscribe(uint256 tokenId, bytes memory data) external onlyPositionManager {
+    function notifySubscribe(uint256 tokenId, bytes memory) external onlyPositionManager {
         _onSubscribeTracker(tokenId);
     }
 
@@ -158,7 +158,7 @@ contract Tracker is BaseHook, ISubscriber {
     }
 
     /// @inheritdoc ISubscriber
-    function notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta feesAccrued) external {
+    function notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta) external {
         _onModifyLiquidityTracker(tokenId, liquidityChange);
     }
 

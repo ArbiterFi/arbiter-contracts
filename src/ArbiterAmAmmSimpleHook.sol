@@ -29,8 +29,9 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
     using SafeCast for int256;
     using SafeCast for uint256;
 
+    error InitData();
+    error NotDynamicFee();
     error ToSmallDeposit();
-    error PoolMustBeDynamicFee();
     error AlreadyWinning();
     error RentTooLow();
 
@@ -89,7 +90,7 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
                 beforeDonate: false,
                 afterDonate: false,
                 beforeSwapReturnDelta: true,
-                afterSwapReturnDelta: true,
+                afterSwapReturnDelta: false,
                 afterAddLiquidityReturnDelta: false,
                 afterRemoveLiquidityReturnDelta: false
             });
@@ -100,13 +101,20 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
         address,
         PoolKey calldata key,
         uint160,
-        bytes calldata
-    ) external view override onlyPoolManager returns (bytes4) {
+        bytes calldata data
+    ) external override onlyPoolManager returns (bytes4) {
         // Pool must have dynamic fee flag set. This is so we can override the LP fee in `beforeSwap`.
-        if (!key.fee.isDynamicFee()) revert PoolMustBeDynamicFee();
-        return this.beforeInitialize.selector;
+        if (!key.fee.isDynamicFee()) revert NotDynamicFee();
+        if (data.length != 1) revert InitData();
 
-        //TODO: revert if calldata doesnt pass bool to set the rent in token0
+        poolHookStates[key.toId()] = PoolHookState({
+            strategy: address(1),
+            rentPerBlock: 0,
+            changeStrategy: false,
+            rentInTokenZero: data[0] != 0
+        });
+
+        return this.beforeInitialize.selector;
     }
 
     /// @notice Distributes rent to LPs before each liquidity change.
@@ -126,12 +134,12 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
         address sender,
         PoolKey calldata key,
         IPoolManager.SwapParams calldata params,
-        bytes calldata
+        bytes calldata hookData
     ) external override onlyPoolManager returns (bytes4, BeforeSwapDelta, uint24) {
         address strategy = _payRent(key);
 
-        // If no strategy is set, the swap fee is just set to the default fee like in a hookless Uniswap pool
-        if (strategy == address(0)) {
+        // If no strategy is set, the swap fee is just set to the default fee Uniswap pool
+        if (strategy == address(0) || strategy == address(1)) {
             return (
                 this.beforeSwap.selector,
                 toBeforeSwapDelta(0, 0),
@@ -141,7 +149,7 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
 
         // Call strategy contract to get swap fee.
         uint256 fee = DEFAULT_SWAP_FEE;
-        try IArbiterFeeProvider(strategy).getFee(sender, key, params) returns (uint24 _fee) {
+        try IArbiterFeeProvider(strategy).getSwapFee(sender, key, params, hookData) returns (uint24 _fee) {
             if (_fee > MAX_FEE) {
                 fee = MAX_FEE;
             } else {
@@ -231,7 +239,6 @@ contract ArbiterAmAmmSimpleHook is BaseHook {
     /// @notice Deposit or withdraw 6909 claim tokens and distribute rent to LPs.
     function _unlockCallback(bytes calldata rawData) internal override returns (bytes memory) {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
-        _payRent(data.key);
         if (data.depositAmount > 0) {
             Currency currency = _getPoolRentCurrency(data.key);
             poolManager.burn(data.sender, currency.toId(), data.depositAmount);
