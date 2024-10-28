@@ -16,3 +16,6 @@
 [submodule "lib/pancake-v4-hooks"]
 	path = lib/pancake-v4-hooks
 	url = https://github.com/pancakeswap/pancake-v4-hooks
+[submodule "lib/pancake-v4-periphery"]
+	path = lib/pancake-v4-periphery
+	url = https://github.com/pancakeswap/pancake-v4-periphery
