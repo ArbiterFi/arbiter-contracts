@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
-import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {IPoolManager} from "lib/pancake-v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "lib/pancake-v4-core/src/types/PoolKey.sol";
 
 interface IArbiterFeeProvider {
     /// @return The fee for the swap

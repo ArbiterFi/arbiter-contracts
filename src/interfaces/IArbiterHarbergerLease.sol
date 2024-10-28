@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
-import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {ICLHooks} from "lib/pancake-v4-core/src/pool-cl/interfaces/ICLHooks.sol";
+import {PoolKey} from "lib/pancake-v4-core/src/types/PoolKey.sol";
 
 /// @title Arbiter AmAmm Harberger Lease
 /// @notice Interface for an auction system based on Harberger Tax principles.
 /// @notice The auctioned assets are the rights to control and collect swap fees from V4 liquidity pools.
 /// @dev strategy SHOULD implement IArbiterAmAmmStrategy
-interface IArbiterAmAmmHarbergerLease is IHooks {
+interface IArbiterAmAmmHarbergerLease is ICLHooks {
     /// @return  The minimum time in blocks that a overbidding rent must last
     function MINIMUM_RENT_TIME_IN_BLOCKS() external view returns (uint64);
 
