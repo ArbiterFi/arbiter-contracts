@@ -4,21 +4,21 @@ pragma solidity ^0.8.24;
 import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 
-/// @title Arbiter AMM Hook Iinterface
-/// @notice Anyone can overbid the current rent for the pool in order to change the active strategy.
-/// @notice The active strategy controls the pool's swap fees and collects them in exchange the winner pays rent.
+/// @title Arbiter AmAmm Harberger Lease
+/// @notice Interface for an auction system based on Harberger Tax principles.
+/// @notice The auctioned assets are the rights to control and collect swap fees from V4 liquidity pools.
 /// @dev strategy SHOULD implement IArbiterAmAmmStrategy
-interface IArbiterAmAmmHook is IHooks {
-    /// @return  The minimum time in blocks that a rent bid must have
+interface IArbiterAmAmmHarbergerLease is IHooks {
+    /// @return  The minimum time in blocks that a overbidding rent must last
     function MINIMUM_RENT_TIME_IN_BLOCKS() external view returns (uint64);
 
-    /// @return  The factor by which the rent must be higher than the current rent unless the current rent finishes in less than TRANSTION_BLOCKS.
+    /// @return The required factor by which an overbidding rent must exceed the current rent, unless the current rent period ends in fewer than TRANSITION_BLOCKS.
     function RENT_FACTOR() external view returns (uint64);
 
     /// @return The number of block before the end of the rent when any bid is overbiddding the current rent
     function TRANSTION_BLOCKS() external view returns (uint64);
 
-    /// @return The gas limit for the fee calculation
+    /// @return The gas limit for the getSwapFee call
     function GET_SWAP_FEE_GAS_LIMIT() external view returns (uint256);
 
     /// @return The deposit of the account for the asset
