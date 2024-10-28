@@ -12,7 +12,7 @@ interface IArbiterAmAmmHarbergerLease is IHooks {
     /// @return  The minimum time in blocks that a overbidding rent must last
     function MINIMUM_RENT_TIME_IN_BLOCKS() external view returns (uint64);
 
-    /// @return The required factor by which an overbidding rent must exceed the current rent, unless the current rent period ends in fewer than TRANSITION_BLOCKS.
+    /// @return The required factor by which an overbidding rent must exceed the current rent, unless the current rent finishes in fewer than TRANSITION_BLOCKS.
     function RENT_FACTOR() external view returns (uint64);
 
     /// @return The number of block before the end of the rent when any bid is overbiddding the current rent
