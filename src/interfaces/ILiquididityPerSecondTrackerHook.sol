@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {ICLHooks} from "lib/pancake-v4-core/src/pool-cl/interfaces/ICLHooks.sol";
 import {PoolKey} from "lib/pancake-v4-core/src/types/PoolKey.sol";
-import {ISubscriber} from "lib/v4-periphery/src/interfaces/ISubscriber.sol";
+import {ISubscriber} from "lib/pancake-v4-periphery/src/interfaces/ISubscriber.sol";
 
 /// @title Liquidity Per Second TrackerHook
 /// @notice This hook is used to track the liquidity per second of subscribed liquidity within pools like in V3.
