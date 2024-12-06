@@ -19,6 +19,7 @@ import {PoolExtension} from "./libraries/PoolExtension.sol";
 import {PositionExtension} from "./libraries/PositionExtension.sol";
 import {Pool} from "v4-core/src/libraries/Pool.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+import {IPoolKeys} from "./interfaces/IPoolKeys.sol";
 
 abstract contract RewardTracker is IRewardTracker {
     using PoolExtension for PoolExtension.State;
@@ -134,6 +135,35 @@ abstract contract RewardTracker is IRewardTracker {
         _onUnubscribeTracker(tokenId);
     }
 
+    function notifyBurn(
+        uint256 tokenId,
+        address,
+        PositionInfo positionInfo,
+        uint256 liquidity,
+        BalanceDelta
+    ) external override {
+        PoolKey memory poolKey = IPoolKeys(address(positionManager)).poolKeys(positionInfo.poolId());
+
+        _beforeOnNotifyBurnTracker(poolKey);
+        _accrueRewards(
+            tokenId,
+            IERC721(address(positionManager)).ownerOf(tokenId),
+            uint128(liquidity),
+            pools[poolKey.toId()].getRewardsPerLiquidityInsideX128(positionInfo.tickLower(), positionInfo.tickUpper())
+        );
+
+        pools[poolKey.toId()].modifyLiquidity(
+            PoolExtension.ModifyLiquidityParams({
+                tickLower: positionInfo.tickLower(),
+                tickUpper: positionInfo.tickUpper(),
+                liquidityDelta: -int128(uint128(liquidity)),
+                tickSpacing: poolKey.tickSpacing
+            })
+        );
+
+        delete positions[tokenId];
+    }
+
     function _beforeOnModifyLiquidityTracker(PoolKey memory key) internal virtual;
 
     function _onModifyLiquidityTracker(uint256 tokenId, int256 liquidityChange) internal {
@@ -166,28 +196,7 @@ abstract contract RewardTracker is IRewardTracker {
         _onModifyLiquidityTracker(tokenId, liquidityChange);
     }
 
-    function _beforeOnNotifyTransferTracker(PoolKey memory key) internal virtual;
-
-    function _onNotifyTransferTracker(uint256 tokenId, address previousOwner, address) internal {
-        (PoolKey memory poolKey, PositionInfo positionInfo) = positionManager.getPoolAndPositionInfo(tokenId);
-
-        // take liquididty before the change
-        uint128 liquidity = positionManager.getPositionLiquidity(tokenId);
-
-        _beforeOnNotifyTransferTracker(poolKey);
-
-        _accrueRewards(
-            tokenId,
-            previousOwner,
-            liquidity,
-            pools[poolKey.toId()].getRewardsPerLiquidityInsideX128(positionInfo.tickLower(), positionInfo.tickUpper())
-        );
-    }
-
-    /// @inheritdoc ISubscriber
-    function notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) external override {
-        _onNotifyTransferTracker(tokenId, previousOwner, newOwner);
-    }
+    function _beforeOnNotifyBurnTracker(PoolKey memory key) internal virtual;
 
     function getRewardsPerLiquidityInsideX128(
         PoolKey calldata poolKey,

@@ -128,7 +128,7 @@ contract ArbiterAmAmmERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
         _payRentAndChangeStrategyIfNeeded(key);
     }
 
-    function _beforeOnNotifyTransferTracker(PoolKey memory key) internal override {
+    function _beforeOnNotifyBurnTracker(PoolKey memory key) internal override {
         _payRentAndChangeStrategyIfNeeded(key);
     }
 
