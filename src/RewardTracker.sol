@@ -111,23 +111,8 @@ abstract contract RewardTracker is IRewardTracker {
         uint128 liquidity = positionManager.getPositionLiquidity(tokenId);
 
         _beforeOnUnubscribeTracker(poolKey);
-        _accrueRewards(
-            tokenId,
-            IERC721(address(positionManager)).ownerOf(tokenId),
-            liquidity,
-            pools[poolKey.toId()].getRewardsPerLiquidityInsideX128(positionInfo.tickLower(), positionInfo.tickUpper())
-        );
 
-        pools[poolKey.toId()].modifyLiquidity(
-            PoolExtension.ModifyLiquidityParams({
-                tickLower: positionInfo.tickLower(),
-                tickUpper: positionInfo.tickUpper(),
-                liquidityDelta: -int128(liquidity),
-                tickSpacing: poolKey.tickSpacing
-            })
-        );
-
-        delete positions[tokenId];
+        _handleRemovePosition(tokenId, poolKey, positionInfo, uint128(liquidity));
     }
 
     /// @inheritdoc ISubscriber
@@ -145,19 +130,29 @@ abstract contract RewardTracker is IRewardTracker {
         PoolKey memory poolKey = IPoolKeys(address(positionManager)).poolKeys(positionInfo.poolId());
 
         _beforeOnNotifyBurnTracker(poolKey);
+
+        _handleRemovePosition(tokenId, poolKey, positionInfo, uint128(liquidity));
+    }
+
+    function _handleRemovePosition(
+        uint256 tokenId,
+        PoolKey memory key,
+        PositionInfo positionInfo,
+        uint128 liquidity
+    ) internal {
         _accrueRewards(
             tokenId,
             IERC721(address(positionManager)).ownerOf(tokenId),
-            uint128(liquidity),
-            pools[poolKey.toId()].getRewardsPerLiquidityInsideX128(positionInfo.tickLower(), positionInfo.tickUpper())
+            liquidity,
+            pools[key.toId()].getRewardsPerLiquidityInsideX128(positionInfo.tickLower(), positionInfo.tickUpper())
         );
 
-        pools[poolKey.toId()].modifyLiquidity(
+        pools[key.toId()].modifyLiquidity(
             PoolExtension.ModifyLiquidityParams({
                 tickLower: positionInfo.tickLower(),
                 tickUpper: positionInfo.tickUpper(),
-                liquidityDelta: -int128(uint128(liquidity)),
-                tickSpacing: poolKey.tickSpacing
+                liquidityDelta: -int128(liquidity),
+                tickSpacing: key.tickSpacing
             })
         );
 
