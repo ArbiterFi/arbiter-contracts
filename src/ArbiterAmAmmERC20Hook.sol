@@ -1,23 +1,20 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.26;
 
-import {BalanceDelta, toBalanceDelta} from "pancake-v4-core/src/types/BalanceDelta.sol";
-import {CLBaseHook} from "./pool-cl/CLBaseHook.sol";
-import {BeforeSwapDelta, toBeforeSwapDelta} from "pancake-v4-core/src/types/BeforeSwapDelta.sol";
-import {Currency, CurrencyLibrary} from "pancake-v4-core/src/types/Currency.sol";
-import {Hooks} from "pancake-v4-core/src/libraries/Hooks.sol";
-import {LPFeeLibrary} from "pancake-v4-core/src/libraries/LPFeeLibrary.sol";
-import {PoolId, PoolIdLibrary} from "pancake-v4-core/src/types/PoolId.sol";
-import {PoolKey} from "pancake-v4-core/src/types/PoolKey.sol";
+import {BalanceDelta, toBalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
+import {BeforeSwapDelta, toBeforeSwapDelta} from "v4-core/src/types/BeforeSwapDelta.sol";
+import {Currency, CurrencyLibrary} from "v4-core/src/types/Currency.sol";
+import {Hooks} from "v4-core/src/libraries/Hooks.sol";
+import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
+import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
+import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {SafeCast} from "lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol";
-import {TickMath} from "pancake-v4-core/src/pool-cl/libraries/TickMath.sol";
+import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {IERC20Minimal} from "pancake-v4-core/src/interfaces/IERC20Minimal.sol";
-import {ICLPoolManager} from "pancake-v4-core/src/pool-cl/interfaces/ICLPoolManager.sol";
-import {ICLPositionManager} from "pancake-v4-periphery/src/pool-cl/interfaces/ICLPositionManager.sol";
+import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
+import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol";
 import {IArbiterFeeProvider} from "./interfaces/IArbiterFeeProvider.sol";
-import {ILockCallback} from "pancake-v4-core/src/interfaces/ILockCallback.sol";
 import {console} from "forge-std/console.sol";
 
 import {AuctionSlot0, AuctionSlot0Library} from "./types/AuctionSlot0.sol";
@@ -26,12 +23,12 @@ import {AuctionSlot1, AuctionSlot1Library} from "./types/AuctionSlot1.sol";
 import {IArbiterAmAmmHarbergerLease} from "./interfaces/IArbiterAmAmmHarbergerLease.sol";
 import {Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
-import {CLPool} from "pancake-v4-core/src/pool-cl/libraries/CLPool.sol";
-import {CLPoolGetters} from "pancake-v4-core/src/pool-cl/libraries/CLPoolGetters.sol";
-import {CLPoolParametersHelper} from "pancake-v4-core/src/pool-cl/libraries/CLPoolParametersHelper.sol";
+import {Pool} from "v4-core/src/libraries/Pool.sol";
 
 import {ArbiterAmAmmBaseHook} from "./ArbiterAmAmmBaseHook.sol";
 import {RewardTracker} from "./RewardTracker.sol";
+
+import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 
 /// @notice ArbiterAmAmmBaseHook implements am-AMM auction and hook functionalities.
 /// It allows anyone to bid for the right to collect and set trading fees for a pool after depositing the rent currency of the pool.
@@ -44,20 +41,18 @@ import {RewardTracker} from "./RewardTracker.sol";
 contract ArbiterAmAmmERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
     using LPFeeLibrary for uint24;
     using CurrencyLibrary for Currency;
-    using CLPoolGetters for CLPool.State;
-    using CLPoolParametersHelper for bytes32;
+    using StateLibrary for IPoolManager;
+    // using PoolGetters for Pool.State;
+    // using PoolParametersHelper for bytes32;
 
     Currency immutable rentCurrency;
 
     constructor(
-        ICLPoolManager poolManager_,
-        ICLPositionManager positionManager_,
+        IPoolManager poolManager_,
+        IPositionManager positionManager_,
         address rentCurrency_,
         address initOwner_
-    )
-        ArbiterAmAmmBaseHook(poolManager_, initOwner_)
-        RewardTracker(positionManager_)
-    {
+    ) ArbiterAmAmmBaseHook(poolManager_, initOwner_) RewardTracker(positionManager_) {
         rentCurrency = Currency.wrap(rentCurrency_);
     }
 
@@ -70,9 +65,9 @@ contract ArbiterAmAmmERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
         address,
         PoolKey calldata key,
         uint160
-    ) external override poolManagerOnly returns (bytes4) {
+    ) external override onlyPoolManager returns (bytes4) {
         // Pool must have dynamic fee flag set. This is so we can override the LP fee in `beforeSwap`.
-        if (!key.fee.isDynamicLPFee()) revert NotDynamicFee();
+        if (!key.fee.isDynamicFee()) revert NotDynamicFee();
         PoolId poolId = key.toId();
 
         (, int24 tick, , ) = poolManager.getSlot0(poolId);
@@ -93,17 +88,17 @@ contract ArbiterAmAmmERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
     function afterSwap(
         address,
         PoolKey calldata key,
-        ICLPoolManager.SwapParams calldata,
+        IPoolManager.SwapParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external override poolManagerOnly returns (bytes4, int128) {
+    ) external override onlyPoolManager returns (bytes4, int128) {
         PoolId poolId = key.toId();
         (, int24 tick, , ) = poolManager.getSlot0(poolId);
 
         AuctionSlot0 slot0 = poolSlot0[poolId];
         if (tick != slot0.lastActiveTick()) {
             _payRentAndChangeStrategyIfNeeded(key);
-            _changeActiveTick(poolId, tick, key.parameters.getTickSpacing());
+            _changeActiveTick(poolId, tick, key.tickSpacing);
         }
 
         return (this.afterSwap.selector, 0);
@@ -113,16 +108,11 @@ contract ArbiterAmAmmERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
     //////////////////////// ArbiterAmAmmBase Internal Overrides /////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////
 
-    function _getPoolRentCurrency(
-        PoolKey memory
-    ) internal view override returns (Currency) {
+    function _getPoolRentCurrency(PoolKey memory) internal view override returns (Currency) {
         return rentCurrency;
     }
 
-    function _distributeRent(
-        PoolKey memory key,
-        uint128 rentAmount
-    ) internal override {
+    function _distributeRent(PoolKey memory key, uint128 rentAmount) internal override {
         _distributeReward(key.toId(), rentAmount);
     }
 
@@ -138,15 +128,11 @@ contract ArbiterAmAmmERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
         _payRentAndChangeStrategyIfNeeded(key);
     }
 
-    function _beforeOnModifyLiquidityTracker(
-        PoolKey memory key
-    ) internal override {
+    function _beforeOnModifyLiquidityTracker(PoolKey memory key) internal override {
         _payRentAndChangeStrategyIfNeeded(key);
     }
 
-    function _beforeOnNotifyTransferTracker(
-        PoolKey memory key
-    ) internal override {
+    function _beforeOnNotifyTransferTracker(PoolKey memory key) internal override {
         _payRentAndChangeStrategyIfNeeded(key);
     }
 
@@ -154,11 +140,7 @@ contract ArbiterAmAmmERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
         rewards = accruedRewards[msg.sender];
         accruedRewards[msg.sender] = 0;
 
-        vault.lock(
-            abi.encode(
-                CallbackData(Currency.unwrap(rentCurrency), to, 0, rewards)
-            )
-        );
+        poolManager.unlock(abi.encode(CallbackData(Currency.unwrap(rentCurrency), to, 0, rewards)));
     }
 
     function donateRewards(PoolKey calldata key, uint128 rewards) external {

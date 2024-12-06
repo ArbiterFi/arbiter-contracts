@@ -1,22 +1,19 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.26;
 
-import {BalanceDelta, toBalanceDelta} from "pancake-v4-core/src/types/BalanceDelta.sol";
-import {CLBaseHook} from "./pool-cl/CLBaseHook.sol";
-import {BeforeSwapDelta, toBeforeSwapDelta} from "pancake-v4-core/src/types/BeforeSwapDelta.sol";
-import {Currency, CurrencyLibrary} from "pancake-v4-core/src/types/Currency.sol";
-import {Hooks} from "pancake-v4-core/src/libraries/Hooks.sol";
-import {LPFeeLibrary} from "pancake-v4-core/src/libraries/LPFeeLibrary.sol";
-import {PoolId, PoolIdLibrary} from "pancake-v4-core/src/types/PoolId.sol";
-import {PoolKey} from "pancake-v4-core/src/types/PoolKey.sol";
+import {BalanceDelta, toBalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
+import {BeforeSwapDelta, toBeforeSwapDelta} from "v4-core/src/types/BeforeSwapDelta.sol";
+import {Currency, CurrencyLibrary} from "v4-core/src/types/Currency.sol";
+import {Hooks} from "v4-core/src/libraries/Hooks.sol";
+import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
+import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
+import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {SafeCast} from "lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol";
-import {TickMath} from "pancake-v4-core/src/pool-cl/libraries/TickMath.sol";
+import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {IERC20Minimal} from "pancake-v4-core/src/interfaces/IERC20Minimal.sol";
-import {ICLPoolManager} from "pancake-v4-core/src/pool-cl/interfaces/ICLPoolManager.sol";
+import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {IArbiterFeeProvider} from "./interfaces/IArbiterFeeProvider.sol";
-import {ILockCallback} from "pancake-v4-core/src/interfaces/ILockCallback.sol";
 import {console} from "forge-std/console.sol";
 
 import {AuctionSlot0, AuctionSlot0Library} from "./types/AuctionSlot0.sol";
@@ -41,7 +38,7 @@ contract ArbiterAmAmmSimpleHook is ArbiterAmAmmBaseHook {
     using LPFeeLibrary for uint24;
 
     constructor(
-        ICLPoolManager poolManager_,
+        IPoolManager poolManager_,
         bool rentInTokenZero_,
         address initOwner_
     ) ArbiterAmAmmBaseHook(poolManager_, initOwner_) {
@@ -51,23 +48,15 @@ contract ArbiterAmAmmSimpleHook is ArbiterAmAmmBaseHook {
     ///////////////////////////////////////////////////////////////////////////////////
     //////////////////////// ArbiterAmAmmBase Internal Overrides /////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////
-    function _getPoolRentCurrency(
-        PoolKey memory key
-    ) internal view override returns (Currency) {
+    function _getPoolRentCurrency(PoolKey memory key) internal view override returns (Currency) {
         Currency currency = RENT_IN_TOKEN_ZERO ? key.currency0 : key.currency1;
 
         return currency;
     }
 
-    function _distributeRent(
-        PoolKey memory key,
-        uint128 rentAmount
-    ) internal override {
-        console.log(
-            "[ArbiterAmAmmSimpleHook._distributeRent] rentAmount",
-            rentAmount
-        );
-        vault.burn(address(this), _getPoolRentCurrency(key), rentAmount);
+    function _distributeRent(PoolKey memory key, uint128 rentAmount) internal override {
+        console.log("[ArbiterAmAmmSimpleHook._distributeRent] rentAmount", rentAmount);
+        poolManager.burn(address(this), _getPoolRentCurrency(key).toId(), rentAmount);
         poolManager.donate(key, rentAmount, 0, "");
     }
 }

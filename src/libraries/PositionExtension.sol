@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.26;
 
-import {FullMath} from "pancake-v4-core/src/pool-cl/libraries/FullMath.sol";
-import {FixedPoint128} from "pancake-v4-core/src/pool-cl/libraries/FixedPoint128.sol";
-import {LiquidityMath} from "pancake-v4-core/src/pool-cl/libraries/LiquidityMath.sol";
-import {CustomRevert} from "pancake-v4-core/src/libraries/CustomRevert.sol";
+import {FullMath} from "v4-core/src/libraries/FullMath.sol";
+import {FixedPoint128} from "v4-core/src/libraries/FixedPoint128.sol";
+import {LiquidityMath} from "v4-core/src/libraries/LiquidityMath.sol";
+import {CustomRevert} from "v4-core/src/libraries/CustomRevert.sol";
 
 /// @title PositionExtension
 /// @notice Positions represent an owner address' liquidity between a lower and upper tick boundary
@@ -35,12 +35,7 @@ library PositionExtension {
         int24 tickUpper,
         bytes32 salt
     ) internal view returns (State storage position) {
-        bytes32 positionKey = calculatePositionKey(
-            owner,
-            tickLower,
-            tickUpper,
-            salt
-        );
+        bytes32 positionKey = calculatePositionKey(owner, tickLower, tickUpper, salt);
         position = self[positionKey];
     }
 
@@ -78,23 +73,15 @@ library PositionExtension {
         uint256 rewardsPerLiquidityInsideX128
     ) internal returns (uint256 rewards) {
         unchecked {
-            uint256 rewardsPerLiquididtyGrowthX128 = rewardsPerLiquidityInsideX128 -
-                    self.rewardsPerLiquidityLastX128;
+            uint256 rewardsPerLiquididtyGrowthX128 = rewardsPerLiquidityInsideX128 - self.rewardsPerLiquidityLastX128;
 
-            rewards = FullMath.mulDiv(
-                rewardsPerLiquididtyGrowthX128,
-                positionLiquidity,
-                FixedPoint128.Q128
-            );
+            rewards = FullMath.mulDiv(rewardsPerLiquididtyGrowthX128, positionLiquidity, FixedPoint128.Q128);
 
             self.rewardsPerLiquidityLastX128 = rewardsPerLiquidityInsideX128;
         }
     }
 
-    function initialize(
-        State storage self,
-        uint256 rewardsPerLiquididtyInsideX128
-    ) internal {
+    function initialize(State storage self, uint256 rewardsPerLiquididtyInsideX128) internal {
         self.rewardsPerLiquidityLastX128 = rewardsPerLiquididtyInsideX128;
     }
 }
