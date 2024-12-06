@@ -61,11 +61,7 @@ contract ArbiterAmAmmERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
     ///////////////////////////////////////////////////////////////////////////////////
 
     /// @dev Reverts if dynamic fee flag is not set or if the pool is not initialized with dynamic fees.
-    function beforeInitialize(
-        address,
-        PoolKey calldata key,
-        uint160
-    ) external override onlyPoolManager returns (bytes4) {
+    function beforeInitialize(address, PoolKey calldata key, uint160) external override returns (bytes4) {
         // Pool must have dynamic fee flag set. This is so we can override the LP fee in `beforeSwap`.
         if (!key.fee.isDynamicFee()) revert NotDynamicFee();
         PoolId poolId = key.toId();

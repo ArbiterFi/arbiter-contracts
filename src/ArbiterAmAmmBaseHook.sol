@@ -26,6 +26,8 @@ import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
 import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 
+import {console} from "forge-std/console.sol";
+
 // TODO decide on the blockNumber storage size uint32 / uint48 / uint64
 
 /// @notice ArbiterAmAmmBaseHook implements am-AMM auction and hook functionalities.
@@ -99,11 +101,7 @@ abstract contract ArbiterAmAmmBaseHook is BaseHook, IArbiterAmAmmHarbergerLease,
     }
 
     /// @dev Reverts if dynamic fee flag is not set or if the pool is not initialized with dynamic fees.
-    function beforeInitialize(
-        address,
-        PoolKey calldata key,
-        uint160
-    ) external virtual override onlyPoolManager returns (bytes4) {
+    function beforeInitialize(address, PoolKey calldata key, uint160) external virtual override returns (bytes4) {
         // Pool must have dynamic fee flag set. This is so we can override the LP fee in `beforeSwap`.
         if (!key.fee.isDynamicFee()) revert NotDynamicFee();
         PoolId poolId = key.toId();
@@ -166,7 +164,6 @@ abstract contract ArbiterAmAmmBaseHook is BaseHook, IArbiterAmAmmHarbergerLease,
         console.log("[beforeSwap] fee: %d", fee);
 
         int256 totalFees = (params.amountSpecified * int256(uint256(fee))) / 1e6;
-        console.log("[beforeSwap] totalFees: %d", totalFees);
         uint256 absTotalFees = totalFees < 0 ? uint256(-totalFees) : uint256(totalFees);
         console.log("[beforeSwap] absTotalFees: %d", absTotalFees);
 
