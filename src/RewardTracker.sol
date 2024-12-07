@@ -42,7 +42,7 @@ abstract contract RewardTracker is IRewardTracker {
     }
 
     /// @dev MUST be called before any rewards are distributed
-    /// @dev for example in beforeInitialize or afterInititalize hook
+    /// @dev for example call it in beforeInitialize or afterInititalize hook
     function _initialize(PoolId id, int24 tick) internal {
         pools[id].initialize(tick);
     }
