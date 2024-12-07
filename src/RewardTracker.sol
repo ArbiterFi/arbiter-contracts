@@ -101,7 +101,17 @@ abstract contract RewardTracker is IRewardTracker {
     //////////////////////////////// ISubscriber Implementation //////////////////////////
     //////////////////////////////////////////////////////////////////////////////////////
 
+    /**
+     * @dev is called before actions on subscribe notifications.
+     * This function can be overridden to perform any actions that need to happen
+     * upon subscribe notifications.
+     *
+     * @param key The PoolKey of a subscribing position.
+     */
     function _beforeOnSubscribeTracker(PoolKey memory key) internal virtual;
+    function _beforeOnUnubscribeTracker(PoolKey memory key) internal virtual;
+    function _beforeOnBurnTracker(PoolKey memory key) internal virtual;
+    function _beforeOnModifyLiquidityTracker(PoolKey memory key) internal virtual;
 
     /// @inheritdoc ISubscriber
     function notifySubscribe(uint256 tokenId, bytes memory) external override onlyPositionManager {
@@ -123,8 +133,6 @@ abstract contract RewardTracker is IRewardTracker {
         );
     }
 
-    function _beforeOnUnubscribeTracker(PoolKey memory key) internal virtual;
-
     /// @inheritdoc ISubscriber
     function notifyUnsubscribe(uint256 tokenId) external override onlyPositionManager {
         (PoolKey memory poolKey, PositionInfo positionInfo) = positionManager.getPoolAndPositionInfo(tokenId);
@@ -134,8 +142,6 @@ abstract contract RewardTracker is IRewardTracker {
 
         _handleRemovePosition(tokenId, poolKey, positionInfo, uint128(liquidity));
     }
-
-    function _beforeOnBurnTracker(PoolKey memory key) internal virtual;
 
     /// @inheritdoc ISubscriber
     function notifyBurn(
@@ -151,15 +157,6 @@ abstract contract RewardTracker is IRewardTracker {
 
         _handleRemovePosition(tokenId, poolKey, positionInfo, uint128(liquidity));
     }
-
-    /**
-     * @dev is called before modifying the liquidity tracker.
-     * This function can be overridden to perform any actions that need to happen
-     * upon a change in subscribed liquidity.
-     *
-     * @param key The PoolKey that identifies the liquidity pool being modified.
-     */
-    function _beforeOnModifyLiquidityTracker(PoolKey memory key) internal virtual;
 
     /// @inheritdoc ISubscriber
     function notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta) external {
