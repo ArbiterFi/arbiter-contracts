@@ -29,8 +29,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {NoOpRewardTracker} from "./contracts/NoOpRewardTracker.sol";
 import {PositionConfig} from "v4-periphery/test/shared/PositionConfig.sol";
 
-import "forge-std/console.sol";
-
 contract RewardTrackerHookTest is Test, PosmTestSetup {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
@@ -102,7 +100,7 @@ contract RewardTrackerHookTest is Test, PosmTestSetup {
         mint(config, liquidity, recipient, Constants.ZERO_BYTES);
     }
 
-    function test_RewardTrackerHookTest_RewardsPerLiquidityIsZeroAfterInitialize() public {
+    function test_RewardTrackerHookTest_RewardsPerLiquidityIsZeroAfterInitialize() public view {
         int24 tickLower = -60;
         int24 tickUpper = 60;
 
@@ -124,7 +122,6 @@ contract RewardTrackerHookTest is Test, PosmTestSetup {
         uint128 amountIn = 1e18;
         IERC20(Currency.unwrap(currency0)).approve(address(swapRouter), amountIn);
 
-        bool zeroForOne = true;
         swap(key, true, -int128(amountIn), ZERO_BYTES);
 
         uint256 rewardsPerLiquidityInsideX128 = trackerHook.getRewardsPerLiquidityInsideX128(key, tickLower, tickUpper);
@@ -219,7 +216,7 @@ contract RewardTrackerHookTest is Test, PosmTestSetup {
         );
     }
 
-    function test_RewardTrackerHookTest_RewardsCumulativeIsZeroAfterInitialize() public {
+    function test_RewardTrackerHookTest_RewardsCumulativeIsZeroAfterInitialize() public view {
         uint256 rewardsPerLiquidityCumulativeX128 = trackerHook.getRewardsPerLiquidityCumulativeX128(key);
 
         assertEq(
@@ -273,8 +270,6 @@ contract RewardTrackerHookTest is Test, PosmTestSetup {
         trackerHook.accrueRewards(tokenId);
 
         uint256 rewards = trackerHook.accruedRewards(address(this));
-
-        console.log("rewards: ", rewards);
 
         assertGt(rewards, 0, "Rewards should have been accumulated for the position");
     }
@@ -332,7 +327,6 @@ contract RewardTrackerHookTest is Test, PosmTestSetup {
         int24 tickUpper = 60;
 
         uint256 tokenId1 = positionManager.nextTokenId();
-        console.log("before addLiquidity user1");
         addLiquidity(key, 1, 1, tickLower, tickUpper, user1);
         vm.startPrank(user1);
         positionManager.subscribe(tokenId1, address(trackerHook), ZERO_BYTES);
@@ -344,7 +338,6 @@ contract RewardTrackerHookTest is Test, PosmTestSetup {
         positionManager.subscribe(tokenId2, address(trackerHook), ZERO_BYTES);
         vm.stopPrank();
 
-        console.log("before donate");
         trackerHook.donateRewards(poolId, 1 ether);
 
         trackerHook.accrueRewards(tokenId1);

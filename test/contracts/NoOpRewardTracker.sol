@@ -27,8 +27,6 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {PosmTestSetup} from "v4-periphery/test/shared/PosmTestSetup.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import "forge-std/console.sol";
-
 contract NoOpRewardTracker is BaseHook, RewardTracker {
     using PoolExtension for PoolExtension.State;
     using PositionExtension for PositionExtension.State;
@@ -77,22 +75,25 @@ contract NoOpRewardTracker is BaseHook, RewardTracker {
     ) external virtual override onlyPoolManager returns (bytes4, int128) {
         PoolId poolId = key.toId();
         (, int24 tick, , ) = poolManager.getSlot0(poolId);
-        console.log("[NoOpRewardTracker.afterSwap] tick:", tick);
 
-        _changeActiveTick(poolId, tick, key.tickSpacing);
+        _handleActiveTickChange(poolId, tick, key.tickSpacing);
 
         return (this.afterSwap.selector, 0);
     }
 
     function _beforeOnSubscribeTracker(PoolKey memory key) internal virtual override {
-        // console.log("beforeOnSubscribeTracker");
+        // some logic
     }
     function _beforeOnUnubscribeTracker(PoolKey memory key) internal virtual override {
-        // console.log("beforeOnUnubscribeTracker");
+        // some logic
     }
-    function _beforeOnModifyLiquidityTracker(PoolKey memory key) internal override {}
+    function _beforeOnModifyLiquidityTracker(PoolKey memory key) internal override {
+        // some logic
+    }
 
-    function _beforeOnNotifyBurnTracker(PoolKey memory key) internal override {}
+    function _beforeOnBurnTracker(PoolKey memory key) internal override {
+        // some logic
+    }
 
     function donateRewards(PoolId poolId, uint128 amount) public {
         _distributeReward(poolId, amount);
@@ -111,7 +112,7 @@ contract NoOpRewardTracker is BaseHook, RewardTracker {
     }
 
     function collectRewards(address to) external returns (uint256 rewards) {
-        rewards = accruedRewards[msg.sender];
-        accruedRewards[msg.sender] = 0;
+        rewards = accruedRewards[to];
+        accruedRewards[to] = 0;
     }
 }

@@ -26,12 +26,11 @@ import {CustomRevert} from "v4-core/src/libraries/CustomRevert.sol";
 // Interfaces for your hook
 import {IArbiterFeeProvider} from "../src/interfaces/IArbiterFeeProvider.sol";
 import {IArbiterAmAmmHarbergerLease} from "../src/interfaces/IArbiterAmAmmHarbergerLease.sol";
-import {ArbiterAmAmmSimpleHook} from "../src/ArbiterAmAmmSimpleHook.sol";
+import {ArbiterAmAmmPoolCurrencyHook} from "../src/ArbiterAmAmmPoolCurrencyHook.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {AuctionSlot0, AuctionSlot0Library} from "../src/types/AuctionSlot0.sol";
 import {AuctionSlot1, AuctionSlot1Library} from "../src/types/AuctionSlot1.sol";
-import "forge-std/console.sol";
 
 contract MockStrategy is IArbiterFeeProvider {
     uint24 public fee;
@@ -54,14 +53,14 @@ contract MockStrategy is IArbiterFeeProvider {
     }
 }
 
-contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
+contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
     using StateLibrary for IPoolManager;
 
     // HookEnabledSwapRouter router;
-    ArbiterAmAmmSimpleHook arbiterHook;
+    ArbiterAmAmmPoolCurrencyHook arbiterHook;
 
     MockERC20 token0;
     MockERC20 token1;
@@ -106,8 +105,8 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
             true, // RENT_IN_TOKEN_ZERO
             address(this)
         ); // Add all the necessary constructor arguments from the hook
-        deployCodeTo("ArbiterAmAmmSimpleHook.sol", constructorArgs, flags);
-        arbiterHook = ArbiterAmAmmSimpleHook(flags);
+        deployCodeTo("ArbiterAmAmmPoolCurrencyHook.sol", constructorArgs, flags);
+        arbiterHook = ArbiterAmAmmPoolCurrencyHook(flags);
 
         // Create the poolKey with dynamic fee flag (requirement from the hook)
         key = PoolKey({
@@ -123,15 +122,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         manager.initialize(key, Constants.SQRT_PRICE_1_1);
         poolManager = manager;
 
-        // console.log("Add initial liquidity using manager interface");
         addLiquidity(key, 10 ether, 10 ether, -60, 60, address(this));
-
-        console.log("currency0: ", address(Currency.unwrap(currency0)));
-        console.log("currency1: ", address(Currency.unwrap(currency1)));
-        console.log("user1", user1);
-        // console.log("user2", user2);
-        console.log("this", address(this));
-        console.log("arbiterHook", address(arbiterHook));
     }
 
     function addLiquidity(
@@ -181,7 +172,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         vm.stopPrank();
     }
 
-    function test_ArbiterAmAmmSimpleHook_BiddingAndRentPayment() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_BiddingAndRentPayment() public {
         resetCurrentBlock();
         transferToAndDepositAs(10_000e18, user1);
         //offset blocks
@@ -212,7 +203,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         addLiquidity(key, 1, 1, -60, 60, address(this));
     }
 
-    function test_ArbiterAmAmmSimpleHook_StrategyContractSetsFee() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_StrategyContractSetsFee() public {
         resetCurrentBlock();
         // Deploy a mock strategy that sets swap fee to DEFAULT_POOL_SWAP_FEE
         MockStrategy strategy = new MockStrategy(DEFAULT_POOL_SWAP_FEE);
@@ -257,7 +248,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         assertEq(strategyBalance, expectedFeeAmount, "Strategy balance does not match expected fee amount");
     }
 
-    function test_ArbiterAmAmmSimpleHook_StrategyFeeCappedAtMaxFee() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_StrategyFeeCappedAtMaxFee() public {
         resetCurrentBlock();
         // Deploy a mock strategy that sets swap fee to a value greater than DEFAULT_POOL_SWAP_FEE
         uint24 strategyFee = 1e6 + 1000; // Fee greater than DEFAULT_POOL_SWAP_FEE
@@ -281,7 +272,6 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
 
         // Record final balances
         uint256 postBalance0 = key.currency0.balanceOf(address(this));
-        uint256 postBalance1 = key.currency1.balanceOf(address(this));
 
         uint256 feeAmount = (amountIn * 400) / 1e6; // capped at 1e6 (100%)
         uint256 expectedFeeAmount = (feeAmount * DEFAULT_WINNER_FEE_SHARE) / 1e6;
@@ -292,7 +282,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         assertEq(strategyBalance, expectedFeeAmount, "Strategy balance should match expected fee amount");
     }
 
-    function test_ArbiterAmAmmSimpleHook_DepositAndWithdraw() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_DepositAndWithdraw() public {
         resetCurrentBlock();
         // User1 deposits currency0
 
@@ -316,7 +306,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         vm.stopPrank();
     }
 
-    function test_ArbiterAmAmmSimpleHook_ChangeStrategy() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_ChangeStrategy() public {
         resetCurrentBlock();
         // User1 overbids and becomes the winner
         transferToAndDepositAs(10_000e18, user1);
@@ -336,7 +326,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         assertEq(currentStrategy, address(newStrategy), "Active strategy should be updated to new strategy");
     }
 
-    function test_ArbiterAmAmmSimpleHook_RevertIfNotDynamicFee() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_RevertIfNotDynamicFee() public {
         resetCurrentBlock();
         // Creating a non-dynamic fee PoolKey
         PoolKey memory nonDynamicKey = PoolKey({
@@ -359,7 +349,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         manager.initialize(nonDynamicKey, Constants.SQRT_PRICE_1_1);
     }
 
-    function test_ArbiterAmAmmSimpleHook_RentTooLow() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_RentTooLow() public {
         resetCurrentBlock();
         // User1 deposits currency0
         transferToAndDepositAs(10_000e18, user1);
@@ -370,7 +360,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         arbiterHook.overbid(key, 1e18, uint32(STARTING_BLOCK + DEFAULT_MINIMUM_RENT_BLOCKS), address(0));
     }
 
-    function test_ArbiterAmAmmSimpleHook_NotWinnerCannotChangeStrategy() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_NotWinnerCannotChangeStrategy() public {
         resetCurrentBlock();
         // User1 overbids and becomes the winner
         transferToAndDepositAs(10_000e18, user1);
@@ -384,7 +374,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         arbiterHook.changeStrategy(key, address(0));
     }
 
-    function test_ArbiterAmAmmSimpleHook_DefaultFeeWhenNoOneHasWon() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_DefaultFeeWhenNoOneHasWon() public {
         resetCurrentBlock();
         // Ensure there is no winner and no strategy set
         address currentWinner = arbiterHook.winner(key);
@@ -412,17 +402,13 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         uint256 postBalance0 = key.currency0.balanceOf(address(user1));
         uint256 postBalance1 = key.currency1.balanceOf(address(user1));
 
-        // Calculate the expected fee using DEFAULT_SWAP_FEE
-        uint256 feeAmount = (amountIn * DEFAULT_SWAP_FEE) / 1e6;
-        uint256 expectedFeeAmount = (feeAmount * DEFAULT_WINNER_FEE_SHARE) / 1e6;
-
         assertEq(prevBalance0 - postBalance0, amountIn, "Amount in mismatch");
 
         uint256 strategyBalance = poolManager.balanceOf(address(currentStrategy), key.currency1.toId());
         assertEq(strategyBalance, 0, "Strategy balance should be zero when no one has won");
     }
 
-    function test_ArbiterAmAmmSimpleHook_DefaultFeeAfterAuctionWinExpired() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_DefaultFeeAfterAuctionWinExpired() public {
         resetCurrentBlock();
         // Deploy a mock strategy that sets swap fee to DEFAULT_POOL_SWAP_FEE
         MockStrategy strategy = new MockStrategy(DEFAULT_POOL_SWAP_FEE);
@@ -450,10 +436,6 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
 
         moveBlockBy(1);
 
-        // Record initial balances
-        uint256 prevBalance0 = poolManager.balanceOf(address(this), key.currency0.toId());
-        uint256 prevBalance1 = poolManager.balanceOf(address(this), key.currency1.toId());
-
         // Perform another swap after rent has technically expired
         IERC20(Currency.unwrap(currency0)).approve(address(swapRouter), amountIn);
         swap(key, true, -int128(amountIn), ZERO_BYTES);
@@ -469,18 +451,13 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         address currentWinner = arbiterHook.winner(key);
         assertEq(currentWinner, address(0), "Winner should be reset to address(0) after rent expiry");
 
-        // Record final balances
-        uint256 postBalance0 = poolManager.balanceOf(address(this), key.currency0.toId());
-        uint256 postBalance1 = poolManager.balanceOf(address(this), key.currency1.toId());
-
         uint256 feeAmount = (amountIn * DEFAULT_SWAP_FEE) / 1e6;
-        uint256 expectedFeeAmount = (feeAmount * DEFAULT_WINNER_FEE_SHARE) / 1e6;
 
         uint256 strategyBalancePostExpiry = poolManager.balanceOf(address(strategy), key.currency1.toId());
         assertEq(strategyBalancePostExpiry, strategyBalance, "Strategy balance not increase after rent expiry");
     }
 
-    function test_ArbiterAmAmmSimpleHook_DepositOf() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_DepositOf() public {
         resetCurrentBlock();
         uint256 initialDeposit = arbiterHook.depositOf(Currency.unwrap(currency0), user1);
         assertEq(initialDeposit, 0, "Initial deposit should be zero");
@@ -491,14 +468,14 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         assertEq(postDeposit, 10_000e18, "Deposit amount does not match expected value");
     }
 
-    function test_ArbiterAmAmmSimpleHook_BiddingCurrency() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_BiddingCurrency() public {
         resetCurrentBlock();
         address expectedCurrency = Currency.unwrap(currency0);
         address actualCurrency = arbiterHook.biddingCurrency(key);
         assertEq(actualCurrency, expectedCurrency, "Bidding currency does not match expected value");
     }
 
-    function test_ArbiterAmAmmSimpleHook_ActiveStrategySameBlockAsOverbid() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_ActiveStrategySameBlockAsOverbid() public {
         resetCurrentBlock();
         address initialStrategy = arbiterHook.activeStrategy(key);
         assertEq(initialStrategy, address(0), "Initial active strategy should be address(0)");
@@ -517,7 +494,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         assertEq(address(0), activeStrategy, "Active strategy was updated unexpectedly");
     }
 
-    function test_ArbiterAmAmmSimpleHook_ActiveStrategyDifferentBlock() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_ActiveStrategyDifferentBlock() public {
         resetCurrentBlock();
         address initialStrategy = arbiterHook.activeStrategy(key);
         assertEq(initialStrategy, address(0), "Initial active strategy should be address(0)");
@@ -538,7 +515,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         assertEq(updatedStrategy, address(strategy), "Active strategy was not updated correctly");
     }
 
-    function test_ArbiterAmAmmSimpleHook_WinnerStrategy() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_WinnerStrategy() public {
         resetCurrentBlock();
         address initialWinnerStrategy = arbiterHook.winnerStrategy(key);
         assertEq(initialWinnerStrategy, address(0), "Initial winner strategy should be address(0)");
@@ -555,7 +532,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         assertEq(currentWinnerStrategy, address(strategy), "Winner strategy was not set correctly");
     }
 
-    function test_ArbiterAmAmmSimpleHook_Winner() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_Winner() public {
         resetCurrentBlock();
         address initialWinner = arbiterHook.winner(key);
         assertEq(initialWinner, address(0), "Initial winner should be address(0)");
@@ -573,7 +550,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         assertEq(currentWinner, user1, "Winner was not set correctly");
     }
 
-    function test_ArbiterAmAmmSimpleHook_RentPerBlock() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_RentPerBlock() public {
         resetCurrentBlock();
         AuctionSlot1 slot1 = arbiterHook.poolSlot1(id);
         uint96 initialRentPerBlock = slot1.rentPerBlock();
@@ -599,7 +576,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         assertEq(updatedRentPerBlock, 10e18, "rentPerBlock was not updated correctly");
     }
 
-    function test_ArbiterAmAmmSimpleHook_RentEndBlock() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_RentEndBlock() public {
         resetCurrentBlock();
         AuctionSlot1 slot1 = arbiterHook.poolSlot1(id);
         uint64 initialRentEndBlock = slot1.rentEndBlock();
@@ -623,7 +600,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         assertEq(currentRentEndBlock, desiredRentEndBlock, "rentEndBlock was not set correctly");
     }
 
-    function test_ArbiterAmAmmSimpleHook_ExactOutZeroForOne() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_ExactOutZeroForOne() public {
         resetCurrentBlock();
         uint24 fee = 1000;
         MockStrategy strategy = new MockStrategy(fee);
@@ -641,7 +618,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         swap(key, true, int128(amountOut), ZERO_BYTES);
     }
 
-    function test_ArbiterAmAmmSimpleHook_ExactOutOneForZero() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_ExactOutOneForZero() public {
         resetCurrentBlock();
         uint24 fee = 1000;
         MockStrategy strategy = new MockStrategy(fee);
@@ -659,7 +636,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         swap(key, false, int128(amountOut), ZERO_BYTES);
     }
 
-    function test_ArbiterAmAmmSimpleHook_ExactInZeroForOne() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_ExactInZeroForOne() public {
         resetCurrentBlock();
         uint24 fee = 1000;
         MockStrategy strategy = new MockStrategy(fee);
@@ -677,7 +654,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         swap(key, true, -int128(amountIn), ZERO_BYTES);
     }
 
-    function test_ArbiterAmAmmSimpleHook_ExactInOneForZero() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_ExactInOneForZero() public {
         resetCurrentBlock();
         uint24 fee = 1000;
         MockStrategy strategy = new MockStrategy(fee);
@@ -695,7 +672,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         swap(key, false, -int128(amountIn), ZERO_BYTES);
     }
 
-    function test_ArbiterAmAmmSimpleHook_WinnerCanChangeFeeAndSwapReflects() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_WinnerCanChangeFeeAndSwapReflects() public {
         resetCurrentBlock();
         uint24 initialFee = 1000;
         uint24 updatedFee = 2000;
@@ -722,7 +699,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         assertEq(strategyBalance, expectedFeeAmount, "Strategy balance should reflect updated fee");
     }
 
-    function test_ArbiterAmAmmSimpleHook_RemainingRentDecreases() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_RemainingRentDecreases() public {
         resetCurrentBlock();
         transferToAndDepositAs(10_000e18, user1);
 
@@ -770,7 +747,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         );
     }
 
-    function test_ArbiterAmAmmSimpleHook_MultipleSwapsSameBlock() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_MultipleSwapsSameBlock() public {
         resetCurrentBlock();
         uint24 fee = 1000;
         MockStrategy strategy = new MockStrategy(fee);
@@ -790,7 +767,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         swap(key, true, -int128(amountIn), ZERO_BYTES);
     }
 
-    function test_ArbiterAmAmmSimpleHook_OverbidAndSwapSameBlock() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_OverbidAndSwapSameBlock() public {
         resetCurrentBlock();
         uint24 fee = 1000;
         MockStrategy strategy = new MockStrategy(fee);
@@ -807,7 +784,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         swap(key, true, -int128(amountIn), ZERO_BYTES);
     }
 
-    function test_ArbiterAmAmmSimpleHook_OverbidMultipleBids() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_OverbidMultipleBids() public {
         resetCurrentBlock();
         uint24 feeUser1 = 1000;
         uint24 feeUser2 = 500;
@@ -864,7 +841,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         );
     }
 
-    function test_ArbiterAmAmmSimpleHook_AuctionFeeDepositRequirement() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_AuctionFeeDepositRequirement() public {
         resetCurrentBlock();
 
         arbiterHook.setAuctionFee(key, 500);
@@ -876,7 +853,6 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
 
         uint128 totalRent = rentPerBlock * DEFAULT_MINIMUM_RENT_BLOCKS;
         uint128 auctionFee = (totalRent * hookAuctionFee) / 1e6;
-        uint128 requiredDeposit = totalRent + auctionFee;
 
         uint32 rentEndBlock = uint32(STARTING_BLOCK + DEFAULT_MINIMUM_RENT_BLOCKS);
 
@@ -894,7 +870,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         assertEq(winner, user1, "User1 should be the winner after depositing the full required amount");
     }
 
-    function test_ArbiterAmAmmSimpleHook_TwoUsersOverbidSameBlock() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_TwoUsersOverbidSameBlock() public {
         resetCurrentBlock();
         uint24 feeUser1 = 1000;
         uint24 feeUser2 = 2000;
@@ -953,7 +929,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         );
     }
 
-    function test_ArbiterAmAmmSimpleHook_TwoUsersOverbidSameBlockWithAuctionFee() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_TwoUsersOverbidSameBlockWithAuctionFee() public {
         resetCurrentBlock();
 
         arbiterHook.setAuctionFee(key, 500);
@@ -996,7 +972,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         IERC20(Currency.unwrap(currency0)).approve(address(swapRouter), amountIn);
         swap(key, true, -int128(amountIn), ZERO_BYTES);
 
-        (uint128 initialRemainingRent, uint128 feeLocked, uint128 collectedFee) = arbiterHook.auctionFees(id);
+        (uint128 initialRemainingRent, uint128 feeLocked, ) = arbiterHook.auctionFees(id);
         assertEq(feeLocked, user2AuctionFee, "Auction fee should be collected for user2");
         assertEq(initialRemainingRent, user2TotalRent, "Initial remaining rent should be equal to user2's total rent");
 
@@ -1028,7 +1004,7 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         );
     }
 
-    function test_ArbiterAmAmmSimpleHook_ComplexAuctionScenario() public {
+    function test_ArbiterAmAmmPoolCurrencyHook_ComplexAuctionScenario() public {
         // Scenario described in comments is unchanged, just updating swaps and balance checks.
 
         resetCurrentBlock();
@@ -1095,7 +1071,6 @@ contract ArbiterAmAmmSimpleHookTest is Test, Deployers {
         vm.stopPrank();
 
         AuctionSlot1 slot1 = arbiterHook.poolSlot1(id);
-        uint128 remainingRentAfterUser2Overbid = slot1.remainingRent();
         address currentWinner = arbiterHook.winner(key);
         assertEq(currentWinner, user2, "User2 should be the new winner");
 
