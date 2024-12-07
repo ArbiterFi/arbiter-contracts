@@ -102,15 +102,32 @@ abstract contract RewardTracker is IRewardTracker {
     //////////////////////////////////////////////////////////////////////////////////////
 
     /**
-     * @dev is called before actions on subscribe notifications.
-     * This function can be overridden to perform any actions that need to happen
-     * upon subscribe notifications.
+     * @dev is called before handling reward tracking operations on subscribe notification.
+     * Can be overriden to add custom logic.
      *
      * @param key The PoolKey of a subscribing position.
      */
     function _beforeOnSubscribeTracker(PoolKey memory key) internal virtual;
+    /**
+     * @dev is called before handling reward tracking operations on unsubscribe notification.
+     * Can be overriden to add custom logic.
+     *
+     * @param key The PoolKey of an unsubscribing position.
+     */
     function _beforeOnUnubscribeTracker(PoolKey memory key) internal virtual;
+    /**
+     * @dev is called before handling reward tracking operations on burn notification.
+     * Can be overriden to add custom logic.
+     *
+     * @param key The PoolKey of a burning position.
+     */
     function _beforeOnBurnTracker(PoolKey memory key) internal virtual;
+    /**
+     * @dev is called before handling reward tracking operations on modify liquidity notification.
+     * Can be overriden to add custom logic.
+     *
+     * @param key The PoolKey of a position with modified liquidity.
+     */
     function _beforeOnModifyLiquidityTracker(PoolKey memory key) internal virtual;
 
     /// @inheritdoc ISubscriber

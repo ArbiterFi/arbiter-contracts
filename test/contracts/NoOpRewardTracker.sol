@@ -27,6 +27,9 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {PosmTestSetup} from "v4-periphery/test/shared/PosmTestSetup.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+/// @title NoOpRewardTracker
+/// @notice This contract is used to test the RewardTracker abstrat contract
+/// @dev does not implement any additional logic besides stub functions for collecting & accruing rewards
 contract NoOpRewardTracker is BaseHook, RewardTracker {
     using PoolExtension for PoolExtension.State;
     using PositionExtension for PositionExtension.State;

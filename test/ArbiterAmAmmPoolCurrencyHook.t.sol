@@ -156,6 +156,7 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
 
     function resetCurrentBlock() public {
         CURRENT_BLOCK_NUMBER = STARTING_BLOCK;
+        vm.roll(CURRENT_BLOCK_NUMBER);
     }
 
     function moveBlockBy(uint256 interval) public {
@@ -997,8 +998,6 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
     }
 
     function test_ArbiterAmAmmPoolCurrencyHook_ComplexAuctionScenario() public {
-        // Scenario described in comments is unchanged, just updating swaps and balance checks.
-
         resetCurrentBlock();
 
         // Set auction fee to 500 (0.05%)
