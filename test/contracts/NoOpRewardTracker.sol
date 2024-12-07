@@ -81,6 +81,10 @@ contract NoOpRewardTracker is BaseHook, RewardTracker {
         return (this.afterSwap.selector, 0);
     }
 
+    function donateRewards(PoolId poolId, uint128 amount) public {
+        _distributeReward(poolId, amount);
+    }
+
     function _beforeOnSubscribeTracker(PoolKey memory key) internal virtual override {
         // some logic
     }
@@ -93,10 +97,6 @@ contract NoOpRewardTracker is BaseHook, RewardTracker {
 
     function _beforeOnBurnTracker(PoolKey memory key) internal override {
         // some logic
-    }
-
-    function donateRewards(PoolId poolId, uint128 amount) public {
-        _distributeReward(poolId, amount);
     }
 
     function accrueRewards(uint256 tokenId) public {

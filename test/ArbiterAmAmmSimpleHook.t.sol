@@ -122,7 +122,7 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
         manager.initialize(key, Constants.SQRT_PRICE_1_1);
         poolManager = manager;
 
-        addLiquidity(key, 10 ether, 10 ether, -60, 60, address(this));
+        addLiquidity(key, 10 ether, 10 ether, -60, 60);
     }
 
     function addLiquidity(
@@ -130,8 +130,7 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
         uint256 amount0Max,
         uint256 amount1Max,
         int24 tickLower,
-        int24 tickUpper,
-        address recipient
+        int24 tickUpper
     ) internal {
         token0.approve(address(modifyLiquidityNoChecks), amount0Max);
         token1.approve(address(modifyLiquidityNoChecks), amount1Max);
@@ -193,14 +192,14 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
         assertEq(winner, user1, "Winner should be user1 after overbidding");
 
         moveBlockBy(5);
-        addLiquidity(key, 1, 1, -60, 60, address(this));
+        addLiquidity(key, 1, 1, -60, 60);
 
         slot1 = arbiterHook.poolSlot1(id);
         uint128 remainingRent = slot1.remainingRent();
         assertEq(startingRent - remainingRent, 5 * 10e18, "Remaining rent should be less than initial deposit");
 
         // add liquidity
-        addLiquidity(key, 1, 1, -60, 60, address(this));
+        addLiquidity(key, 1, 1, -60, 60);
     }
 
     function test_ArbiterAmAmmPoolCurrencyHook_StrategyContractSetsFee() public {
@@ -216,17 +215,14 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
         vm.stopPrank();
 
         uint256 prevBalance0 = key.currency0.balanceOf(address(this));
-        uint256 prevBalance1 = key.currency1.balanceOf(address(this));
 
         uint128 amountIn = 1e18;
         moveBlockBy(1);
 
-        bool zeroForOne = true;
         IERC20(Currency.unwrap(currency0)).approve(address(swapRouter), amountIn);
         swap(key, true, -int128(amountIn), ZERO_BYTES);
 
         uint256 postBalance0 = key.currency0.balanceOf(address(this));
-        uint256 postBalance1 = key.currency1.balanceOf(address(this));
 
         uint256 feeAmount = (amountIn * DEFAULT_POOL_SWAP_FEE) / 1e6;
         uint256 expectedFeeAmount = (feeAmount * DEFAULT_WINNER_FEE_SHARE) / 1e6;
@@ -263,7 +259,6 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
 
         // Record initial balances
         uint256 prevBalance0 = key.currency0.balanceOf(address(this));
-        uint256 prevBalance1 = key.currency1.balanceOf(address(this));
 
         // Perform a swap
         uint128 amountIn = 1e18;
@@ -320,7 +315,7 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
         arbiterHook.changeStrategy(key, address(newStrategy));
         moveBlockBy(1);
 
-        addLiquidity(key, 1, 1, -60, 60, address(this));
+        addLiquidity(key, 1, 1, -60, 60);
 
         address currentStrategy = arbiterHook.activeStrategy(key);
         assertEq(currentStrategy, address(newStrategy), "Active strategy should be updated to new strategy");
@@ -400,7 +395,6 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
 
         // Record final balances
         uint256 postBalance0 = key.currency0.balanceOf(address(user1));
-        uint256 postBalance1 = key.currency1.balanceOf(address(user1));
 
         assertEq(prevBalance0 - postBalance0, amountIn, "Amount in mismatch");
 
@@ -446,12 +440,10 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
         moveBlockBy(1);
 
         // Trigger _payRent by adding liquidity
-        addLiquidity(key, 1, 1, -60, 60, address(this));
+        addLiquidity(key, 1, 1, -60, 60);
 
         address currentWinner = arbiterHook.winner(key);
         assertEq(currentWinner, address(0), "Winner should be reset to address(0) after rent expiry");
-
-        uint256 feeAmount = (amountIn * DEFAULT_SWAP_FEE) / 1e6;
 
         uint256 strategyBalancePostExpiry = poolManager.balanceOf(address(strategy), key.currency1.toId());
         assertEq(strategyBalancePostExpiry, strategyBalance, "Strategy balance not increase after rent expiry");
@@ -488,7 +480,7 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
         vm.stopPrank();
 
         // Trigger _payRent by adding liquidity
-        addLiquidity(key, 1, 1, -60, 60, address(this));
+        addLiquidity(key, 1, 1, -60, 60);
 
         address activeStrategy = arbiterHook.activeStrategy(key);
         assertEq(address(0), activeStrategy, "Active strategy was updated unexpectedly");
@@ -509,7 +501,7 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
         moveBlockBy(1);
 
         // Trigger _payRent
-        addLiquidity(key, 1, 1, -60, 60, address(this));
+        addLiquidity(key, 1, 1, -60, 60);
 
         address updatedStrategy = arbiterHook.activeStrategy(key);
         assertEq(updatedStrategy, address(strategy), "Active strategy was not updated correctly");
@@ -1070,7 +1062,6 @@ contract ArbiterAmAmmPoolCurrencyHookTest is Test, Deployers {
         arbiterHook.overbid(key, user2RentPerBlock, rentEndBlock2, address(strategyUser2));
         vm.stopPrank();
 
-        AuctionSlot1 slot1 = arbiterHook.poolSlot1(id);
         address currentWinner = arbiterHook.winner(key);
         assertEq(currentWinner, user2, "User2 should be the new winner");
 

@@ -34,10 +34,10 @@ import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 /// @dev The strategy address should implement IArbiterFeeProvider to set the trading fees.
 /// @dev The strategy address should be able to manage ERC6909 claim tokens in the PoolManager.
 ///
-/// @notice ArbiterAmAmmPoolCurrencyHook uses immutable rentCurrency as the rent currency for all trading pairs.
+/// @notice ArbiterAmAmmAnyERC20Hook uses immutable rentCurrency as the rent currency for all trading pairs.
 /// @notice To recieve rent, Liquididty Providers must subscribe to this contract.
 /// @notice To claim the rewards one must call collectRewards.
-contract ArbiterAmAmmPoolCurrencyHook is ArbiterAmAmmBaseHook, RewardTracker {
+contract ArbiterAmAmmAnyERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
     using LPFeeLibrary for uint24;
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
