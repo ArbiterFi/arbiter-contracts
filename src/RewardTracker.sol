@@ -41,21 +41,25 @@ abstract contract RewardTracker is IRewardTracker {
         positionManager = _positionManager;
     }
 
-    // @dev this should be called before any rewards are distributed
+    /// @dev MUST be called before any rewards are distributed
+    /// @dev for example in beforeInitialize or afterInititalize hook
     function _initialize(PoolId id, int24 tick) internal {
         pools[id].initialize(tick);
     }
 
-    // @dev call it only after the pool was initialized
+    /// @dev MUST be called only after the pool has been initialized
+    /// @dev for example call it in before/afterSwap , before/afterModifyLiquididty hooks
     function _distributeReward(PoolId id, uint128 rewards) internal {
         pools[id].distributeRewards(rewards);
     }
 
-    // @dev call when the tick that receives rewards changes
+    /// @dev MUST be called in afterSwap whenever the actibe tick changes
     function _handleActiveTickChange(PoolId id, int24 newActiveTick, int24 tickSpacing) internal {
         pools[id].crossToActiveTick(tickSpacing, newActiveTick);
     }
 
+    /// @notice collects the accrued rewards for the caller
+    /// @notice it's called at every Notification
     function _accrueRewards(
         uint256 tokenId,
         address owner,
