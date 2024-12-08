@@ -41,8 +41,6 @@ contract ArbiterAmAmmAnyERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
     using LPFeeLibrary for uint24;
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
-    // using PoolGetters for Pool.State;
-    // using PoolParametersHelper for bytes32;
 
     Currency immutable rentCurrency;
 

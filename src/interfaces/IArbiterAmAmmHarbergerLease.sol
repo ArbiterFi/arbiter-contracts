@@ -75,8 +75,8 @@ interface IArbiterAmAmmHarbergerLease {
 
     /// @notice Makes Currency(asset) deposit on behalf of msg.sender into the PoolManager for this contract to be later used by msg.sender for bidding.
     /// @dev Requires the contract to have the allowance to transfer the asset from the msg.sender
-    /// @param asset The address of the ERC20 to deposit
-    /// @param amount The amount of the ERC20 to deposit
+    /// @param asset The address of the bid/rent token to deposit
+    /// @param amount The amount of the bid/rent token to deposit
     function deposit(address asset, uint256 amount) external;
 
     /// @notice Overbids the current rent for the pool - rentPerBlock * (rentEndBlock - block.number) are subtracted from the msg.sender deposit
@@ -90,9 +90,9 @@ interface IArbiterAmAmmHarbergerLease {
     /// @param strategy The address of the strategy that will be used if the bid wins from the next rent payment
     function overbid(PoolKey calldata key, uint80 rentPerBlock, uint32 rentEndBlock, address strategy) external;
 
-    /// @notice Withdraws deposited ERC20 from this contract
-    /// @param asset The address of the ERC20 to withdraw
-    /// @param amount The amount of the ERC20 to withdraw
+    /// @notice Withdraws deposited bid/rent token from this contract
+    /// @param asset The address of the bid/rent token to withdraw
+    /// @param amount The amount of the bid/rent token to withdraw
     function withdraw(address asset, uint256 amount) external;
 
     /// @notice Changes the strategy for the pool

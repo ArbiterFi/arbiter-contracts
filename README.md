@@ -1,134 +1,205 @@
-# v4-template
-### **A template for writing Uniswap v4 Hooks 🦄**
+# Auction Managed AMM & Active Range Incentives in Any Currency
 
-[`Use this Template`](https://github.com/uniswapfoundation/v4-template/generate)
+Besides inline documentation available in source code, below is a high-level overview of the project, including the key components, interfaces, and usage.
 
-1. The example hook [Counter.sol](src/Counter.sol) demonstrates the `beforeSwap()` and `afterSwap()` hooks
-2. The test template [Counter.t.sol](test/Counter.t.sol) preconfigures the v4 pool manager, test tokens, and test liquidity.
+## Auction Managed AMM implementation
 
-<details>
-<summary>Updating to v4-template:latest</summary>
+### Description
 
-This template is actively maintained -- you can update the v4 dependencies, scripts, and helpers: 
-```bash
-git remote add template https://github.com/uniswapfoundation/v4-template
-git fetch template
-git merge template/main <BRANCH> --allow-unrelated-histories
-```
+The Auction Managed AMM (am-AMM) introduces a Harberger lease-based auction mechanism into Uniswap v4 pools, inspired by Austin Adam's paper [link](https://arxiv.org/abs/2403.03367). Participants can bid for the right to control pool's swap fee by continuously outbidding each other.
 
-</details>
+Key aspects of the am-AMM implementation:
 
----
+- **Harberger Lease Auction:** Control rights are continuously auctioned. The highest bidder gains control for a certain period but can be challenged at any time by a higher bid.
+- **Dynamic Fee Adjustments:** The winner can supply a custom strategy to determine the swap fee rate dynamically. This creates a market-based solution to the optimal fee problem.
+- **MEV Redirection:** Auction proceeds effectively get redirected to the pool, capturing the value of MEV for LPs.
+- **Acutions Run In Pool Currencies or Any ERC20 Token:** The auction can be run in any ERC20 token or one of the pool's tokens.
+- **Additional UNI Token Utility** Increase UNI token utility by running
+  am-AMM auctions in UNI token.
 
-## Check Forge Installation
-*Ensure that you have correctly installed Foundry (Forge) and that it's up to date. You can update Foundry by running:*
+## Active Tick Incentives in Any Currency
 
-```
-foundryup
-```
+### Description
 
-## Set up
+The `RewardTracker` is a composable & efficient solution to track and
+distribute incentives for in-range Liquidity that can be combined with any hook.
 
-*requires [foundry](https://book.getfoundry.sh)*
+- **Any ERC20 Token:** Incentive payouts can be in any token, enabling novel incentive structures. For example, distributing governance tokens, stablecoins, or even exotic assets as rewards.
+- **In-Range Liquidity Rewards:** Only liquidity that falls into the active price range when swaps occur earns proportional rewards.
+- **Time-Varying Incentives:** Rewards can be adjusted over time as desired, allowing for dynamic incentive schemes and experimentation.
 
-```
-forge install
-forge test
-```
+## Features
 
-### Local Development (Anvil)
+1. **Auction Managed AMM (am-AMM):**  
+   Implements a Harberger lease-based auction system that lets users "bid" in any token for the right to control specific aspects of the pool. The highest bidder (winner) can:
 
-Other than writing unit tests (recommended!), you can only deploy & test hooks on [anvil](https://book.getfoundry.sh/anvil/)
+   - Control the dynamic fee structure via a customizable strategy.
+   - Earn a share of the swap fees.
+   - Donate or distribute incentives to in-range LPs seamlessly.
+   - Allows hook owner to charge fee on distributed rent
+   - Allows hook owner to control parameters like:
+     - maximal gas cost of swap fee calculation
+     - auction fee
+     - swap fee share that goes to the winer
 
-```bash
-# start anvil, a local EVM chain
-anvil
+2. **Abstract Reward Tracker:**  
+   A mechanism to track and distribute rewards to active liquidity providers. It can:
+   - Distribute any ERC20 token as rewards for in-range liquidity.
+   - Support multiple sources of rewards over time.
+   - Operate through an `ISubscriber` interface.
+   - Gas efficient & composable design.
+   - Integrate with any hook to reward in range LPs.
 
-# in a new terminal
-forge script script/Anvil.s.sol \
-    --rpc-url http://localhost:8545 \
-    --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
-    --broadcast
-```
+- **Time-Varying Incentives:** Easily adjust incentive levels over time without changing pool contracts.
+- **Any-Token Rewards:** Distribute rewards in any ERC20 token (e.g., UNI or other tokens).
+- **Active Range Incentivization:** Reward LPs only when their liquidity is actively used by swaps in the range.
+- **Harberger Lease Auction:** Continuously auction off the "right" to influence pool parameters and capture MEV.
+- **Dynamic Fees:** The winning bidder can adjust fee strategies to find the optimal fee for the pool.
+- **Gas-Efficient**: Uses packed storage slots & optimizes reads/writes for minimal overhead
+- **Composable Design:**: Both `RewardTracker` and `ArbiterAmAmmBaseHook` are focused on maximizing flexibility & allow for easy usage/integration.
 
-<details>
-<summary><h3>Testnets</h3></summary>
-
-NOTE: 11/21/2023, the Goerli deployment is out of sync with the latest v4. **It is recommend to use local testing instead**
-
-~~For testing on Goerli Testnet the Uniswap Foundation team has deployed a slimmed down version of the V4 contract (due to current contract size limits) on the network.~~
-
-~~The relevant addresses for testing on Goerli are the ones below~~
-
-```bash
-POOL_MANAGER = 0x0
-POOL_MODIFY_POSITION_TEST = 0x0
-SWAP_ROUTER = 0x0
-```
-
-Update the following command with your own private key:
+## Folder Structure
 
 ```
-forge script script/00_Counter.s.sol \
---rpc-url https://rpc.ankr.com/eth_goerli \
---private-key [your_private_key_on_goerli_here] \
---broadcast
+.
+├── foundry.toml
+├── LICENSE
+├── README.md
+├── remappings.txt
+├── run_tests.sh
+├── src
+│   ├── ArbiterAmAmmAnyERC20Hook.sol
+│   ├── ArbiterAmAmmBaseHook.sol
+│   ├── ArbiterAmAmmPoolCurrencyHook.sol
+│   ├── interfaces
+│   │   ├── IAmAmmWithERC20Rewards.sol
+│   │   ├── IArbiterAmAmmHarbergerLease.sol
+│   │   ├── IArbiterAmmStrategy.sol
+│   │   ├── IArbiterFeeProvider.sol
+│   │   ├── IPoolKeys.sol
+│   │   └── IRewardTracker.sol
+│   ├── libraries
+│   │   ├── PoolExtension.sol
+│   │   └── PositionExtension.sol
+│   ├── RewardTracker.sol
+│   └── types
+│       ├── AuctionSlot0.sol
+│       └── AuctionSlot1.sol
+└── test
+    ├── ArbiterAmAmmAnyERC20Hook.t.sol
+    ├── ArbiterAmAmmPoolCurrencyHook.t.sol
+    ├── contracts
+    │   └── NoOpRewardTracker.sol
+    └── RewardTracker.t.sol
 ```
 
-### *Deploying your own Tokens For Testing*
+**Key Components:**
 
-Because V4 is still in testing mode, most networks don't have liquidity pools live on V4 testnets. We recommend launching your own test tokens and expirementing with them that. We've included in the templace a Mock UNI and Mock USDC contract for easier testing. You can deploy the contracts and when you do you'll have 1 million mock tokens to test with for each contract. See deployment commands below
+- `ArbiterAmAmmBaseHook.sol`: Abstract base contract for the auction-managed AMM, handling rent payment logic and integration with the reward tracker.
+- `ArbiterAmAmmAnyERC20Hook.sol`: Concrete implementation supporting arbitrary ERC20 tokens for rent and reward distribution.
+- `ArbiterAmAmmPoolCurrencyHook.sol`: Variant that uses one of the pool's tokens as the rent/reward currency.
+- `RewardTracker.sol`: Abstract contract implementing reward tracking logic, intended to be inherited and integrated with the Uniswap v4 hooks.
 
+## Interfaces
+
+### IAmAmmWithERC20Rewards
+
+Combines Harberger Lease and Rewards-Per-Second tracking to distribute ERC20 rewards to active liquidity ranges.
+
+### IArbiterAmAmmHarbergerLease
+
+Defines the methods related to the Harberger lease-based auction system, including depositing, bidding, overbidding, and withdrawing tokens.
+
+### IArbiterAmmStrategy
+
+Allows controlling the fee calculation logic. The auction winner can provide a custom strategy to dynamically adjust the swap fee - implementing `IArbiterAmmStrategy` interface.
+
+### IArbiterFeeProvider
+
+Used by the AMM to get the current swap fee from auction winner. The call gas cost is limited by hook's parameter.
+
+### IRewardTracker
+
+Specifies the methods needed to track and distribute rewards to active liquidity. This is at the heart of incentivizing LPs over time.
+
+## How to Use the Abstract Reward Tracker
+
+The `RewardTracker` is an abstract contract designed to be integrated into your hook contracts that wish to:
+
+- Track in-range liquidity.
+- Distribute ERC20 rewards.
+- Automatically adjust incentives as the pool parameters change.
+
+Key points:
+
+- **ISubscriber Interface:**  
+  The `RewardTracker` relies on the `ISubscriber` interface from Uniswap v4 Periphery. To track LPs rewards LPs need to subscribe their position to the contract using `RewardRracker`. Once subscribed whenever a position is modified or unsubscribed, it triggers notifications and allows the `RewardTracker` to update the accrued rewards for the LPs.
+- **Claiming rewards:**  
+  While the rewards get calculated automatically, LPs need to claim their rewards that are available in the `accruedRewards` mapping (a mapping from rewards owner to the accrued rewards amount). The mapping is available for a hook that integrates `RewardTracker` which needs only to implement simple method to allow LPs to claim their rewards. Example:
+
+```solidity
+function collectRewards(address to) external returns (uint256 rewards) {
+    rewards = accruedRewards[msg.sender];
+    accruedRewards[msg.sender] = 0;
+
+    // assumes rewardCurrrency is an address
+    poolManager.unlock(abi.encode(rewardCurrency, to, 0, rewards)));
 ```
-forge create script/mocks/mUNI.sol:MockUNI \
---rpc-url [your_rpc_url_here] \
---private-key [your_private_key_on_goerli_here]
-```
 
-```
-forge create script/mocks/mUSDC.sol:MockUSDC \
---rpc-url [your_rpc_url_here] \
---private-key [your_private_key_on_goerli_here]
-```
+- **Integrating the Reward Tracker:**
 
-</details>
+  1. **Initialization (`_initialize`)**:  
+     Call `_initialize(poolId, activeTick)` when a pool is set up to start tracking rewards.
 
----
+  2. **Distributing Rewards (`_distributeRewards`)**:  
+     Call `_distributeReward(poolId, rewardAmount)` whenever new rewards need to be distributed to the active range. This updates internal state so that currently active LPs will receive the correct shares.
 
-<details>
-<summary><h2>Troubleshooting</h2></summary>
+  3. **Updating on Active Tick Changes (`_handleActiveTickChange`)**:  
+     If the active tick changes (e.g., after a swap), call `_handleActiveTickChange` to update internal tracking logic and ensure rewards remain accurate.
 
+  4. **Accruing Rewards (`_accrueRewards`)**:  
+     Internally called whenever liquidity changes, this function ensures that LPs receive the correct share of rewards when they modify their positions, subscribe, or unsubscribe.
 
+- **Before Notifications Hooks:**
+  The `RewardTracker` defines several `_beforeOnXxxTracker` methods that you can override to perform actions before internal reward logic executes. For example:
 
-### *Permission Denied*
+  - `_beforeOnSubscribeTracker(poolKey)`
+  - `_beforeOnUnubscribeTracker(poolKey)`
+  - `_beforeOnBurnTracker(poolKey)`
+  - `_beforeOnModifyLiquidityTracker(poolKey)`
 
-When installing dependencies with `forge install`, Github may throw a `Permission Denied` error
+  In the provided implementation, the AMM uses these hooks to ensure rent is paid and strategy changes are applied before updating the reward distribution.
 
-Typically caused by missing Github SSH keys, and can be resolved by following the steps [here](https://docs.github.com/en/github/authenticating-to-github/connecting-to-github-with-ssh) 
+## Example usage with ArbiterAmAmmBaseHook
 
-Or [adding the keys to your ssh-agent](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent#adding-your-ssh-key-to-the-ssh-agent), if you have already uploaded SSH keys
+`ArbiterAmAmmAnyERC20Hook` is an abstract contract that ties together:
 
-### Hook deployment failures
+- The Harberger lease auction logic (ArbiterAmAmmBaseHook)
+- The Reward Tracker.
 
-Hook deployment failures are caused by incorrect flags or incorrect salt mining
+1. **`_getPoolRentCurrency`**:  
+   Used to pecify which currency is used for the rent (eg: any ERC20 token or a pool token).
 
-1. Verify the flags are in agreement:
-    * `getHookCalls()` returns the correct flags
-    * `flags` provided to `HookMiner.find(...)`
-2. Verify salt mining is correct:
-    * In **forge test**: the *deploye*r for: `new Hook{salt: salt}(...)` and `HookMiner.find(deployer, ...)` are the same. This will be `address(this)`. If using `vm.prank`, the deployer will be the pranking address
-    * In **forge script**: the deployer must be the CREATE2 Proxy: `0x4e59b44847b379578588920cA78FbF26c0B4956C`
-        * If anvil does not have the CREATE2 deployer, your foundry may be out of date. You can update it with `foundryup`
+2. **`_distributeRent`**:  
+   Defines how rent is distributed. Updates the reward tracking logic with the rent amount. In `ArbiterAmAmmPoolCurrencyHook`, it burns the tokens and donates them to the pool using `_donate` method.
 
-</details>
+3. **Handled Active Tick Changes**:  
+   In the `afterSwap` hook, as well as any `_onBefore` RewardTracker's action, the `_payRentAndChangeStrategyIfNeeded` is called and `_handleActiveTickChange` is performed to ensure the reward distribution remains accurate as market conditions shift.
 
----
+4. **Bidding and Overbidding**:  
+   Users can deposit tokens and call `overbid` to become the winner. The contract updates the current winner, the rent rate, and collects rent periodically.
 
-Additional resources:
+## Tests Description
 
-[v4-periphery](https://github.com/uniswap/v4-periphery) contains advanced hook implementations that serve as a great reference
+The `test` directory contains suites of Foundry-based tests.
 
-[v4-core](https://github.com/uniswap/v4-core)
-
-[v4-by-example](https://v4-by-example.org)
-
+- **Reward Tracking**:
+  - Ensured precise reward growth for active LPs in correct ticks.
+  - Automatic, accurate reward distribution during swaps.
+  - Successful reward collection and claim by LPs.
+- **Auction Managed AMM**:
+  - Tested bidding, overbidding, and dynamic auction winner changes.
+  - Ensured correctness of swaps’ impact on winners’ earnings and rewards.
+  - Covered non-pool token rewards with seamless LP subscription to Reward Tracking as well as pool token rewards
+  - Covered pool token rewards comprehensively
+  - Guaranteed reliable contract functionality under various flows

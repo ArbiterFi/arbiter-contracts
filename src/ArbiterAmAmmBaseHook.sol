@@ -170,10 +170,6 @@ abstract contract ArbiterAmAmmBaseHook is BaseHook, IArbiterAmAmmHarbergerLease,
 
         bool isFeeCurrency0 = exactOut == params.zeroForOne;
 
-        if (exactOut == params.zeroForOne) {} else {}
-
-        if (exactOut) {} else {}
-
         // Send fees to strategy
         poolManager.mint(strategy, isFeeCurrency0 ? key.currency0.toId() : key.currency1.toId(), strategyFee);
 
