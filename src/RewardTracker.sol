@@ -19,14 +19,13 @@ import {PoolExtension} from "./libraries/PoolExtension.sol";
 import {PositionExtension} from "./libraries/PositionExtension.sol";
 import {Pool} from "v4-core/src/libraries/Pool.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+import {IPoolKeys} from "./interfaces/IPoolKeys.sol";
 
 abstract contract RewardTracker is IRewardTracker {
     using PoolExtension for PoolExtension.State;
     using PositionExtension for PositionExtension.State;
     using PoolIdLibrary for PoolKey;
     using PositionInfoLibrary for PositionInfo;
-    // using PoolGetters for Pool.State;
-    // using PoolParametersHelper for bytes32;
 
     mapping(PoolId => PoolExtension.State) public pools;
     mapping(uint256 => PositionExtension.State) public positions;
@@ -42,24 +41,25 @@ abstract contract RewardTracker is IRewardTracker {
         positionManager = _positionManager;
     }
 
-    // @dev this should be called before any rewards are distributed
+    /// @dev MUST be called before any rewards are distributed
+    /// @dev for example call it in beforeInitialize or afterInititalize hook
     function _initialize(PoolId id, int24 tick) internal {
-        console.log("[RewardTracker._initialize]");
-        console.log("[RewardTracker._initialize] tick:", tick);
         pools[id].initialize(tick);
     }
 
-    // @dev call it only after the pool was initialized
+    /// @dev MUST be called only after the pool has been initialized
+    /// @dev for example call it in before/afterSwap , before/afterModifyLiquididty hooks
     function _distributeReward(PoolId id, uint128 rewards) internal {
         pools[id].distributeRewards(rewards);
     }
 
-    // @dev call when the tick that receives rewards changes
-    function _changeActiveTick(PoolId id, int24 newActiveTick, int24 tickSpacing) internal {
-        console.log("[RewardTracker._changeActiveTick]");
+    /// @dev MUST be called in afterSwap whenever the actibe tick changes
+    function _handleActiveTickChange(PoolId id, int24 newActiveTick, int24 tickSpacing) internal {
         pools[id].crossToActiveTick(tickSpacing, newActiveTick);
     }
 
+    /// @notice collects the accrued rewards for the caller
+    /// @notice it's called at every Notification
     function _accrueRewards(
         uint256 tokenId,
         address owner,
@@ -72,14 +72,66 @@ abstract contract RewardTracker is IRewardTracker {
         );
     }
 
+    function _handleRemovePosition(
+        uint256 tokenId,
+        PoolKey memory key,
+        PositionInfo positionInfo,
+        uint128 liquidity
+    ) internal {
+        _accrueRewards(
+            tokenId,
+            IERC721(address(positionManager)).ownerOf(tokenId),
+            liquidity,
+            pools[key.toId()].getRewardsPerLiquidityInsideX128(positionInfo.tickLower(), positionInfo.tickUpper())
+        );
+
+        pools[key.toId()].modifyLiquidity(
+            PoolExtension.ModifyLiquidityParams({
+                tickLower: positionInfo.tickLower(),
+                tickUpper: positionInfo.tickUpper(),
+                liquidityDelta: -int128(liquidity),
+                tickSpacing: key.tickSpacing
+            })
+        );
+
+        delete positions[tokenId];
+    }
+
     //////////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////// ISubscriber Implementation //////////////////////////
     //////////////////////////////////////////////////////////////////////////////////////
 
+    /**
+     * @dev is called before handling reward tracking operations on subscribe notification.
+     * Can be overriden to add custom logic.
+     *
+     * @param key The PoolKey of a subscribing position.
+     */
     function _beforeOnSubscribeTracker(PoolKey memory key) internal virtual;
+    /**
+     * @dev is called before handling reward tracking operations on unsubscribe notification.
+     * Can be overriden to add custom logic.
+     *
+     * @param key The PoolKey of an unsubscribing position.
+     */
+    function _beforeOnUnubscribeTracker(PoolKey memory key) internal virtual;
+    /**
+     * @dev is called before handling reward tracking operations on burn notification.
+     * Can be overriden to add custom logic.
+     *
+     * @param key The PoolKey of a burning position.
+     */
+    function _beforeOnBurnTracker(PoolKey memory key) internal virtual;
+    /**
+     * @dev is called before handling reward tracking operations on modify liquidity notification.
+     * Can be overriden to add custom logic.
+     *
+     * @param key The PoolKey of a position with modified liquidity.
+     */
+    function _beforeOnModifyLiquidityTracker(PoolKey memory key) internal virtual;
 
-    function _onSubscribeTracker(uint256 tokenId) internal {
-        console.log("[RewardTracker._onSubscribeTracker]");
+    /// @inheritdoc ISubscriber
+    function notifySubscribe(uint256 tokenId, bytes memory) external override onlyPositionManager {
         (PoolKey memory poolKey, PositionInfo positionInfo) = positionManager.getPoolAndPositionInfo(tokenId);
         uint128 liquidity = positionManager.getPositionLiquidity(tokenId);
 
@@ -99,44 +151,32 @@ abstract contract RewardTracker is IRewardTracker {
     }
 
     /// @inheritdoc ISubscriber
-    function notifySubscribe(uint256 tokenId, bytes memory) external override onlyPositionManager {
-        _onSubscribeTracker(tokenId);
-    }
-
-    function _beforeOnUnubscribeTracker(PoolKey memory key) internal virtual;
-
-    function _onUnubscribeTracker(uint256 tokenId) internal {
+    function notifyUnsubscribe(uint256 tokenId) external override onlyPositionManager {
         (PoolKey memory poolKey, PositionInfo positionInfo) = positionManager.getPoolAndPositionInfo(tokenId);
         uint128 liquidity = positionManager.getPositionLiquidity(tokenId);
 
         _beforeOnUnubscribeTracker(poolKey);
-        _accrueRewards(
-            tokenId,
-            IERC721(address(positionManager)).ownerOf(tokenId),
-            liquidity,
-            pools[poolKey.toId()].getRewardsPerLiquidityInsideX128(positionInfo.tickLower(), positionInfo.tickUpper())
-        );
 
-        pools[poolKey.toId()].modifyLiquidity(
-            PoolExtension.ModifyLiquidityParams({
-                tickLower: positionInfo.tickLower(),
-                tickUpper: positionInfo.tickUpper(),
-                liquidityDelta: -int128(liquidity),
-                tickSpacing: poolKey.tickSpacing
-            })
-        );
-
-        delete positions[tokenId];
+        _handleRemovePosition(tokenId, poolKey, positionInfo, uint128(liquidity));
     }
 
     /// @inheritdoc ISubscriber
-    function notifyUnsubscribe(uint256 tokenId) external override onlyPositionManager {
-        _onUnubscribeTracker(tokenId);
+    function notifyBurn(
+        uint256 tokenId,
+        address,
+        PositionInfo positionInfo,
+        uint256 liquidity,
+        BalanceDelta
+    ) external override {
+        PoolKey memory poolKey = IPoolKeys(address(positionManager)).poolKeys(positionInfo.poolId());
+
+        _beforeOnBurnTracker(poolKey);
+
+        _handleRemovePosition(tokenId, poolKey, positionInfo, uint128(liquidity));
     }
 
-    function _beforeOnModifyLiquidityTracker(PoolKey memory key) internal virtual;
-
-    function _onModifyLiquidityTracker(uint256 tokenId, int256 liquidityChange) internal {
+    /// @inheritdoc ISubscriber
+    function notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta) external {
         (PoolKey memory poolKey, PositionInfo positionInfo) = positionManager.getPoolAndPositionInfo(tokenId);
 
         _beforeOnModifyLiquidityTracker(poolKey);
@@ -159,34 +199,6 @@ abstract contract RewardTracker is IRewardTracker {
                 tickSpacing: poolKey.tickSpacing
             })
         );
-    }
-
-    /// @inheritdoc ISubscriber
-    function notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta) external {
-        _onModifyLiquidityTracker(tokenId, liquidityChange);
-    }
-
-    function _beforeOnNotifyTransferTracker(PoolKey memory key) internal virtual;
-
-    function _onNotifyTransferTracker(uint256 tokenId, address previousOwner, address) internal {
-        (PoolKey memory poolKey, PositionInfo positionInfo) = positionManager.getPoolAndPositionInfo(tokenId);
-
-        // take liquididty before the change
-        uint128 liquidity = positionManager.getPositionLiquidity(tokenId);
-
-        _beforeOnNotifyTransferTracker(poolKey);
-
-        _accrueRewards(
-            tokenId,
-            previousOwner,
-            liquidity,
-            pools[poolKey.toId()].getRewardsPerLiquidityInsideX128(positionInfo.tickLower(), positionInfo.tickUpper())
-        );
-    }
-
-    /// @inheritdoc ISubscriber
-    function notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) external override {
-        _onNotifyTransferTracker(tokenId, previousOwner, newOwner);
     }
 
     function getRewardsPerLiquidityInsideX128(

@@ -14,7 +14,6 @@ import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {IArbiterFeeProvider} from "./interfaces/IArbiterFeeProvider.sol";
-import {console} from "forge-std/console.sol";
 
 import {AuctionSlot0, AuctionSlot0Library} from "./types/AuctionSlot0.sol";
 import {AuctionSlot1, AuctionSlot1Library} from "./types/AuctionSlot1.sol";
@@ -30,9 +29,9 @@ import {ArbiterAmAmmBaseHook} from "./ArbiterAmAmmBaseHook.sol";
 /// @dev The strategy address should implement IArbiterFeeProvider to set the trading fees.
 /// @dev The strategy address should be able to manage ERC6909 claim tokens in the PoolManager.
 ///
-/// @notice ArbiterAmAmmSimpleHook uses currency0 or currency1 from the pool ( depending on immutable RENT_IN_TOKEN_ZERO ) as the rent currency.
+/// @notice ArbiterAmAmmPoolCurrencyHook uses currency0 or currency1 from the pool ( depending on immutable RENT_IN_TOKEN_ZERO ) as the rent currency.
 /// @notice The rent is distributed to the active tick using donate.
-contract ArbiterAmAmmSimpleHook is ArbiterAmAmmBaseHook {
+contract ArbiterAmAmmPoolCurrencyHook is ArbiterAmAmmBaseHook {
     bool immutable RENT_IN_TOKEN_ZERO;
 
     using LPFeeLibrary for uint24;
@@ -55,7 +54,6 @@ contract ArbiterAmAmmSimpleHook is ArbiterAmAmmBaseHook {
     }
 
     function _distributeRent(PoolKey memory key, uint128 rentAmount) internal override {
-        console.log("[ArbiterAmAmmSimpleHook._distributeRent] rentAmount", rentAmount);
         poolManager.burn(address(this), _getPoolRentCurrency(key).toId(), rentAmount);
         poolManager.donate(key, rentAmount, 0, "");
     }

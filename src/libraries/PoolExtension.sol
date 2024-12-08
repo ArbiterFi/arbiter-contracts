@@ -3,16 +3,9 @@ pragma solidity ^0.8.0;
 
 import {SafeCast} from "v4-core/src/libraries/SafeCast.sol";
 import {TickBitmap} from "v4-core/src/libraries/TickBitmap.sol";
-import {FixedPoint128} from "v4-core/src/libraries/FixedPoint128.sol";
-import {TickMath} from "v4-core/src/libraries/TickMath.sol";
-import {SqrtPriceMath} from "v4-core/src/libraries/SqrtPriceMath.sol";
-import {SwapMath} from "v4-core/src/libraries/SwapMath.sol";
-import {BalanceDelta, toBalanceDelta, BalanceDeltaLibrary} from "v4-core/src/types/BalanceDelta.sol";
 import {ProtocolFeeLibrary} from "v4-core/src/libraries/ProtocolFeeLibrary.sol";
 import {LiquidityMath} from "v4-core/src/libraries/LiquidityMath.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
-import {CustomRevert} from "v4-core/src/libraries/CustomRevert.sol";
-import {console} from "forge-std/console.sol";
 
 /// @notice a library that records staked/subscribed liquiduty and allows for the calculation of
 ///         the rewards per liquidity of a position
@@ -22,7 +15,6 @@ library PoolExtension {
     using PoolExtension for State;
     using ProtocolFeeLibrary for *;
     using LPFeeLibrary for uint24;
-    using CustomRevert for bytes4;
 
     // info stored for each initialized individual tick
     struct TickInfo {
@@ -51,47 +43,13 @@ library PoolExtension {
     ) internal view returns (uint256) {
         unchecked {
             if (tickLower >= tickUpper) return 0;
-            console.log("[PoolExtension][getRewardsPerLiquidityInsideX128] self.tick", self.tick);
 
             if (self.tick < tickLower) {
-                console.log("[PoolExtension][getRewardsPerLiquidityInsideX128] self.tick < tickLower");
-                console.log(
-                    "[PoolExtension][getRewardsPerLiquidityInsideX128] self.ticks[tickLower].rewardsPerLiquidityOutsideX128",
-                    self.ticks[tickLower].rewardsPerLiquidityOutsideX128
-                );
-                console.log(
-                    "[PoolExtension][getRewardsPerLiquidityInsideX128] self.rewardsPerLiquidityCumulativeX128",
-                    self.rewardsPerLiquidityCumulativeX128
-                );
                 return self.ticks[tickLower].rewardsPerLiquidityOutsideX128 - self.rewardsPerLiquidityCumulativeX128;
             }
             if (self.tick >= tickUpper) {
-                console.log("[PoolExtension][getRewardsPerLiquidityInsideX128] self.tick >= tickUpper");
-                console.log(
-                    "[PoolExtension][getRewardsPerLiquidityInsideX128] self.ticks[tickUpper].rewardsPerLiquidityOutsideX128",
-                    self.ticks[tickUpper].rewardsPerLiquidityOutsideX128
-                );
-                console.log(
-                    "[PoolExtension][getRewardsPerLiquidityInsideX128] self.rewardsPerLiquidityCumulativeX128",
-                    self.rewardsPerLiquidityCumulativeX128
-                );
                 return self.rewardsPerLiquidityCumulativeX128 - self.ticks[tickUpper].rewardsPerLiquidityOutsideX128;
             }
-            console.log(
-                "[PoolExtension][getRewardsPerLiquidityInsideX128] self.tick >= tickLower && self.tick < tickUpper"
-            );
-            console.log(
-                "[PoolExtension][getRewardsPerLiquidityInsideX128] self.ticks[tickUpper].rewardsPerLiquidityOutsideX128",
-                self.ticks[tickUpper].rewardsPerLiquidityOutsideX128
-            );
-            console.log(
-                "[PoolExtension][getRewardsPerLiquidityInsideX128] self.ticks[tickLower].rewardsPerLiquidityOutsideX128",
-                self.ticks[tickLower].rewardsPerLiquidityOutsideX128
-            );
-            console.log(
-                "[PoolExtension][getRewardsPerLiquidityInsideX128] self.rewardsPerLiquidityCumulativeX128",
-                self.rewardsPerLiquidityCumulativeX128
-            );
             return
                 self.rewardsPerLiquidityCumulativeX128 -
                 self.ticks[tickUpper].rewardsPerLiquidityOutsideX128 -
@@ -140,23 +98,19 @@ library PoolExtension {
 
         // if we need to update the ticks, do it
         if (liquidityDelta != 0) {
-            console.log("[PoolExtension][modifyLiquidity] Updating liquidity");
             (state.flippedLower, state.liquidityGrossAfterLower) = updateTick(self, tickLower, liquidityDelta, false);
             (state.flippedUpper, state.liquidityGrossAfterUpper) = updateTick(self, tickUpper, liquidityDelta, true);
 
             if (state.flippedLower) {
-                console.log("[PoolExtension][modifyLiquidity] Flipped lower tick", tickLower);
                 self.tickBitmap.flipTick(tickLower, params.tickSpacing);
             }
             if (state.flippedUpper) {
-                console.log("[PoolExtension][modifyLiquidity] Flipped upper tick", tickUpper);
                 self.tickBitmap.flipTick(tickUpper, params.tickSpacing);
             }
         }
 
         // clear any tick data that is no longer needed
         if (liquidityDelta < 0) {
-            console.log("[PoolExtension][modifyLiquidity] Clearing tick");
             if (state.flippedLower) {
                 clearTick(self, tickLower);
             }
@@ -167,15 +121,10 @@ library PoolExtension {
 
         // update the active liquidity
         if (params.tickLower < self.tick && self.tick < params.tickUpper) {
-            console.log("[PoolExtension][modifyLiquidity] Updating liquidty");
-            console.log("[PoolExtension][modifyLiquidity] self.liquidity", self.liquidity);
-            console.log("[PoolExtension][modifyLiquidity] liquidityDelta", liquidityDelta);
             self.liquidity = LiquidityMath.addDelta(self.liquidity, liquidityDelta);
         }
     }
 
-    /// @notice Executes a swap against the state, and returns the amount deltas of the pool
-    /// @dev PoolManager checks that the pool is initialized before calling
     function crossToActiveTick(State storage self, int24 tickSpacing, int24 activeTick) internal {
         // initialize to the current tick
         int24 currentTick = self.tick;
@@ -184,12 +133,6 @@ library PoolExtension {
 
         //eq to zeroForOne
         bool goingLeft = activeTick <= currentTick;
-
-        console.log("[PoolExtension][crossToActiveTick] activeTick", activeTick);
-        console.log("[PoolExtension][crossToActiveTick] currentTick", currentTick);
-        console.log("[PoolExtension][crossToActiveTick] goingLeft", goingLeft);
-        console.log("[PoolExtension][crossToActiveTick] liquidityChange", liquidityChange);
-        console.log("[PoolExtension][crossToActiveTick] tickSpacing", tickSpacing);
 
         while ((activeTick < currentTick) == goingLeft) {
             (int24 nextTick, ) = self.tickBitmap.nextInitializedTickWithinOneWord(currentTick, tickSpacing, goingLeft);
@@ -201,10 +144,7 @@ library PoolExtension {
             unchecked {
                 if (goingLeft) liquidityNet = -liquidityNet;
             }
-            console.log("[PoolExtension][crossToActiveTick] liquidityNet", liquidityNet);
 
-            console.log("[PoolExtension][crossToActiveTick] nextTick", nextTick);
-            console.log("[PoolExtension][crossToActiveTick] currentTick", currentTick);
             unchecked {
                 currentTick = goingLeft ? nextTick - 1 : nextTick;
             }
@@ -212,8 +152,7 @@ library PoolExtension {
         }
 
         self.tick = activeTick;
-        console.log("[PoolExtension][crossToActiveTick] self.liquidity", self.liquidity);
-        console.log("[PoolExtension][crossToActiveTick] liquidityChange", liquidityChange);
+
         self.liquidity = LiquidityMath.addDelta(self.liquidity, liquidityChange);
     }
 

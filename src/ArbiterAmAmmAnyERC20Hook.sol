@@ -15,7 +15,6 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol";
 import {IArbiterFeeProvider} from "./interfaces/IArbiterFeeProvider.sol";
-import {console} from "forge-std/console.sol";
 
 import {AuctionSlot0, AuctionSlot0Library} from "./types/AuctionSlot0.sol";
 import {AuctionSlot1, AuctionSlot1Library} from "./types/AuctionSlot1.sol";
@@ -35,10 +34,10 @@ import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 /// @dev The strategy address should implement IArbiterFeeProvider to set the trading fees.
 /// @dev The strategy address should be able to manage ERC6909 claim tokens in the PoolManager.
 ///
-/// @notice ArbiterAmAmmERC20Hook uses immutable rentCurrency as the rent currency for all trading pairs.
+/// @notice ArbiterAmAmmAnyERC20Hook uses immutable rentCurrency as the rent currency for all trading pairs.
 /// @notice To recieve rent, Liquididty Providers must subscribe to this contract.
 /// @notice To claim the rewards one must call collectRewards.
-contract ArbiterAmAmmERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
+contract ArbiterAmAmmAnyERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
     using LPFeeLibrary for uint24;
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
@@ -94,7 +93,7 @@ contract ArbiterAmAmmERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
         AuctionSlot0 slot0 = poolSlot0[poolId];
         if (tick != slot0.lastActiveTick()) {
             _payRentAndChangeStrategyIfNeeded(key);
-            _changeActiveTick(poolId, tick, key.tickSpacing);
+            _handleActiveTickChange(poolId, tick, key.tickSpacing);
         }
 
         return (this.afterSwap.selector, 0);
@@ -128,7 +127,7 @@ contract ArbiterAmAmmERC20Hook is ArbiterAmAmmBaseHook, RewardTracker {
         _payRentAndChangeStrategyIfNeeded(key);
     }
 
-    function _beforeOnNotifyTransferTracker(PoolKey memory key) internal override {
+    function _beforeOnBurnTracker(PoolKey memory key) internal override {
         _payRentAndChangeStrategyIfNeeded(key);
     }
 

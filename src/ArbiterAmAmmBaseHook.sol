@@ -15,7 +15,6 @@ import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {IArbiterFeeProvider} from "./interfaces/IArbiterFeeProvider.sol";
-import {console} from "forge-std/console.sol";
 
 import {AuctionSlot0, AuctionSlot0Library} from "./types/AuctionSlot0.sol";
 import {AuctionSlot1, AuctionSlot1Library} from "./types/AuctionSlot1.sol";
@@ -25,8 +24,6 @@ import {Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
 import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
-
-import {console} from "forge-std/console.sol";
 
 // TODO decide on the blockNumber storage size uint32 / uint48 / uint64
 
@@ -138,8 +135,6 @@ abstract contract ArbiterAmAmmBaseHook is BaseHook, IArbiterAmAmmHarbergerLease,
         IPoolManager.SwapParams calldata params,
         bytes calldata hookData
     ) external virtual override onlyPoolManager returns (bytes4, BeforeSwapDelta, uint24) {
-        console.log("[beforeSwap] start");
-        console.log("[beforeSwap] block.number: %d", block.number);
         PoolId poolId = key.toId();
         AuctionSlot0 slot0 = poolSlot0[poolId];
         slot0 = _changeStrategyIfNeeded(slot0, poolId);
@@ -156,23 +151,18 @@ abstract contract ArbiterAmAmmBaseHook is BaseHook, IArbiterAmAmmHarbergerLease,
         try
             IArbiterFeeProvider(strategy).getSwapFee{gas: 2 << slot0.strategyGasLimit()}(sender, key, params, hookData)
         returns (uint24 _fee) {
-            console.log("[beforeSwap] _fee: %d", _fee);
             if (_fee <= 1e6) {
                 fee = _fee;
             }
         } catch {}
-        console.log("[beforeSwap] fee: %d", fee);
 
         int256 totalFees = (params.amountSpecified * int256(uint256(fee))) / 1e6;
         uint256 absTotalFees = totalFees < 0 ? uint256(-totalFees) : uint256(totalFees);
-        console.log("[beforeSwap] absTotalFees: %d", absTotalFees);
 
         // Calculate fee split
         uint256 strategyFee = (absTotalFees * slot0.winnerFeeSharePart()) / 1e6;
 
-        console.log("[beforeSwap] strategyFee: %d", strategyFee);
         uint256 lpFee = absTotalFees - strategyFee;
-        console.log("[beforeSwap] lpFee: %d", lpFee);
 
         // Determine the specified currency. If amountSpecified < 0, the swap is exact-in so the feeCurrency should be the token the swapper is selling.
         // If amountSpecified > 0, the swap is exact-out and it's the bought token.
@@ -180,26 +170,16 @@ abstract contract ArbiterAmAmmBaseHook is BaseHook, IArbiterAmAmmHarbergerLease,
 
         bool isFeeCurrency0 = exactOut == params.zeroForOne;
 
-        if (exactOut == params.zeroForOne) {
-            console.log("[beforeSwap] feeCurrency key.currency0");
-        } else {
-            console.log("[beforeSwap] feeCurrency key.currency1");
-        }
+        if (exactOut == params.zeroForOne) {} else {}
 
-        if (exactOut) {
-            console.log("[beforeSwap] exactOut");
-        } else {
-            console.log("[beforeSwap] exactIn");
-        }
+        if (exactOut) {} else {}
 
         // Send fees to strategy
         poolManager.mint(strategy, isFeeCurrency0 ? key.currency0.toId() : key.currency1.toId(), strategyFee);
 
         if (isFeeCurrency0) {
-            console.log("[beforeSwap] donate amount0");
             poolManager.donate(key, lpFee, 0, "");
         } else {
-            console.log("[beforeSwap] donate amount1");
             poolManager.donate(key, 0, lpFee, "");
         }
 
@@ -222,7 +202,6 @@ abstract contract ArbiterAmAmmBaseHook is BaseHook, IArbiterAmAmmHarbergerLease,
 
         AuctionSlot0 slot0 = poolSlot0[poolId];
         if (tick != slot0.lastActiveTick()) {
-            console.log("[afterSwap] tick != slot0.lastActiveTick()");
             _payRentAndChangeStrategyIfNeeded(key);
         }
 
@@ -354,6 +333,7 @@ abstract contract ArbiterAmAmmBaseHook is BaseHook, IArbiterAmAmmHarbergerLease,
         uint128 totalRent = rentPerBlock * rentBlockLength;
         uint128 auctionFee = (totalRent * slot0.auctionFee()) / 1e6;
         uint128 requiredDeposit = totalRent + auctionFee;
+
         unchecked {
             uint256 availableDeposit = deposits[msg.sender][currency];
 
@@ -438,7 +418,6 @@ abstract contract ArbiterAmAmmBaseHook is BaseHook, IArbiterAmAmmHarbergerLease,
     function _changeStrategyIfNeeded(AuctionSlot0 slot0, PoolId poolId) internal view returns (AuctionSlot0) {
         // check if we need to change strategy
         if (slot0.shouldChangeStrategy()) {
-            console.log("[_changeStrategyIfNeeded] shouldChangeStrategy");
             slot0 = slot0.setStrategyAddress(winnerStrategies[poolId]).setShouldChangeStrategy(false);
         }
 
@@ -452,16 +431,11 @@ abstract contract ArbiterAmAmmBaseHook is BaseHook, IArbiterAmAmmHarbergerLease,
         uint32 lastPaidBlock = slot1.lastPaidBlock();
         uint128 remainingRent = slot1.remainingRent();
 
-        console.log("[_payRentAndChangeStrategyIfNeeded] lastPaidBlock: %d", lastPaidBlock);
-        console.log("[_payRentAndChangeStrategyIfNeeded] remainingRent: %d", remainingRent);
-        console.log("[_payRentAndChangeStrategyIfNeeded] block.number: %d", block.number);
         if (lastPaidBlock == uint32(block.number)) {
-            console.log("[_payRentAndChangeStrategyIfNeeded] lastPaidBlock == block.number");
             return;
         }
 
         if (remainingRent == 0) {
-            console.log("[_payRentAndChangeStrategyIfNeeded] remainingRent == 0");
             slot1 = slot1.setLastPaidBlock(uint32(block.number));
             poolSlot1[poolId] = slot1;
             return;
@@ -474,12 +448,8 @@ abstract contract ArbiterAmAmmBaseHook is BaseHook, IArbiterAmAmmHarbergerLease,
             blocksElapsed = uint32(block.number) - lastPaidBlock;
         }
 
-        console.log("[_payRentAndChangeStrategyIfNeeded] blocksElapsed: %d", blocksElapsed);
-        console.log("[_payRentAndChangeStrategyIfNeeded] rentPerBlock: %d", slot1.rentPerBlock());
-
         uint128 rentAmount = slot1.rentPerBlock() * blocksElapsed;
 
-        console.log("[_payRentAndChangeStrategyIfNeeded] rentAmount: %d", rentAmount);
         if (rentAmount > remainingRent) {
             // pay the remainingRent and reset the auction - no winner
             rentAmount = remainingRent;
